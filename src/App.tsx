@@ -68,12 +68,7 @@ function App() {
           {/* Yield Preview */}
           <div style={styles.yieldPreview}>
             <div style={styles.yieldItem}>
-              <span style={styles.yieldLabel}>Example stake</span>
-              <span style={styles.yieldValue}>1,000 DIEM</span>
-            </div>
-            <div style={styles.yieldDivider}>→</div>
-            <div style={styles.yieldItem}>
-              <span style={styles.yieldLabel}>Est. daily yield</span>
+              <span style={styles.yieldLabel}>Daily yield per DIEM</span>
               <span style={styles.yieldValueHighlight}>$0.65 - $0.95</span>
             </div>
             <div style={styles.yieldDivider}>→</div>
