@@ -43,6 +43,21 @@ function App() {
         </div>
       </header>
 
+      {/* Venice Ecosystem Banner */}
+      <div style={styles.ecosystemBanner}>
+        <span style={styles.ecosystemText}>Built for the</span>
+        <a href="https://venice.ai" target="_blank" rel="noopener noreferrer" style={styles.ecosystemLink}>
+          <img src="/venice-keys.svg" alt="Venice" style={styles.ecosystemLogo} />
+          <span style={styles.ecosystemVenice}>Venice</span>
+        </a>
+        <span style={styles.ecosystemText}>ecosystem</span>
+        <span style={styles.ecosystemDivider}>•</span>
+        <span style={styles.ecosystemTokens}>
+          <span style={styles.tokenBadge}>VVV</span>
+          <span style={styles.tokenBadge}>DIEM</span>
+        </span>
+      </div>
+
       {/* Hero Section */}
       <section style={styles.hero}>
         <div style={styles.heroContent}>
@@ -240,6 +255,55 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '24px',
     fontWeight: 600,
     color: brand.colors.text,
+  },
+
+  // Ecosystem Banner
+  ecosystemBanner: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: brand.spacing.sm,
+    padding: `${brand.spacing.md} ${brand.spacing.xl}`,
+    background: `linear-gradient(90deg, ${brand.colors.primaryMuted} 0%, rgba(0, 212, 170, 0.1) 100%)`,
+    borderBottom: `1px solid ${brand.colors.border}`,
+    flexWrap: 'wrap',
+  },
+  ecosystemText: {
+    fontSize: '14px',
+    color: brand.colors.textSecondary,
+  },
+  ecosystemLink: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    textDecoration: 'none',
+  },
+  ecosystemLogo: {
+    width: '20px',
+    height: '20px',
+  },
+  ecosystemVenice: {
+    fontSize: '15px',
+    fontWeight: 600,
+    color: brand.colors.text,
+  },
+  ecosystemDivider: {
+    color: brand.colors.textMuted,
+    margin: `0 ${brand.spacing.xs}`,
+  },
+  ecosystemTokens: {
+    display: 'flex',
+    gap: brand.spacing.xs,
+  },
+  tokenBadge: {
+    padding: `2px ${brand.spacing.sm}`,
+    background: brand.colors.surface,
+    border: `1px solid ${brand.colors.border}`,
+    borderRadius: brand.borderRadius.sm,
+    fontSize: '12px',
+    fontWeight: 600,
+    fontFamily: brand.fonts.mono,
+    color: brand.colors.primary,
   },
 
   // Hero
