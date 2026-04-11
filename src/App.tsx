@@ -16,15 +16,20 @@ function App() {
     }
 
     try {
-      // Store in localStorage for now - replace with actual backend
-      const waitlist = JSON.parse(localStorage.getItem('diempool_waitlist') || '[]');
-      if (!waitlist.includes(email)) {
-        waitlist.push(email);
-        localStorage.setItem('diempool_waitlist', JSON.stringify(waitlist));
+      const res = await fetch('/api/waitlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to join waitlist');
       }
+
       setSubmitted(true);
-    } catch {
-      setError('Something went wrong. Please try again.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
     }
   };
 
