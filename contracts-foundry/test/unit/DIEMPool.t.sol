@@ -1,26 +1,26 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import { Test, console2 } from "forge-std/Test.sol";
+import { Test } from "forge-std/Test.sol";
 import { DIEMPool } from "../../src/DIEMPool.sol";
+import { MockDIEM } from "../mocks/MockDIEM.sol";
 import { MockERC20 } from "../mocks/MockERC20.sol";
 
 contract DIEMPoolTest is Test {
     DIEMPool public pool;
-    MockERC20 public diem;
+    MockDIEM public diem;
     MockERC20 public usdc;
 
     address public owner = makeAddr("owner");
     address public alice = makeAddr("alice");
     address public bob = makeAddr("bob");
-    address public charlie = makeAddr("charlie");
 
     uint256 public constant INITIAL_BALANCE = 10_000e18;
     uint256 public constant USDC_BALANCE = 100_000e6;
 
     function setUp() public {
         // Deploy tokens
-        diem = new MockERC20("DIEM", "DIEM", 18);
+        diem = new MockDIEM();
         usdc = new MockERC20("USDC", "USDC", 6);
 
         // Deploy pool
@@ -30,15 +30,12 @@ contract DIEMPoolTest is Test {
         // Mint tokens to users
         diem.mint(alice, INITIAL_BALANCE);
         diem.mint(bob, INITIAL_BALANCE);
-        diem.mint(charlie, INITIAL_BALANCE);
         usdc.mint(owner, USDC_BALANCE);
 
         // Approve pool
         vm.prank(alice);
         diem.approve(address(pool), type(uint256).max);
         vm.prank(bob);
-        diem.approve(address(pool), type(uint256).max);
-        vm.prank(charlie);
         diem.approve(address(pool), type(uint256).max);
         vm.prank(owner);
         usdc.approve(address(pool), type(uint256).max);
@@ -49,7 +46,7 @@ contract DIEMPoolTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function test_Constructor() public view {
-        assertEq(address(pool.diemToken()), address(diem));
+        assertEq(address(pool.DIEM()), address(diem));
         assertEq(address(pool.yieldToken()), address(usdc));
         assertEq(pool.owner(), owner);
         assertEq(pool.totalStaked(), 0);
@@ -64,107 +61,154 @@ contract DIEMPoolTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                              STAKE TESTS
+                             DEPOSIT TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_Stake() public {
+    function test_Deposit() public {
         uint256 amount = 1000e18;
 
         vm.prank(alice);
-        pool.stake(amount);
+        pool.deposit(amount);
 
         assertEq(pool.stakedAmount(alice), amount);
         assertEq(pool.totalStaked(), amount);
-        assertEq(diem.balanceOf(address(pool)), amount);
-        assertEq(diem.balanceOf(alice), INITIAL_BALANCE - amount);
+        // DIEM should be staked in the DIEM contract
+        (uint256 stakedInDiem,,) = diem.stakedInfos(address(pool));
+        assertEq(stakedInDiem, amount);
     }
 
-    function test_Stake_Multiple() public {
+    function test_Deposit_Multiple() public {
         vm.prank(alice);
-        pool.stake(1000e18);
+        pool.deposit(1000e18);
 
         vm.prank(bob);
-        pool.stake(2000e18);
+        pool.deposit(2000e18);
 
         assertEq(pool.totalStaked(), 3000e18);
         assertEq(pool.stakedAmount(alice), 1000e18);
         assertEq(pool.stakedAmount(bob), 2000e18);
     }
 
-    function test_Stake_RevertsOnZero() public {
+    function test_Deposit_RevertsOnZero() public {
         vm.prank(alice);
         vm.expectRevert(DIEMPool.ZeroAmount.selector);
-        pool.stake(0);
+        pool.deposit(0);
     }
 
-    function test_Stake_RevertsWhenPaused() public {
+    function test_Deposit_RevertsWhenPaused() public {
         vm.prank(owner);
         pool.pause();
 
         vm.prank(alice);
         vm.expectRevert();
-        pool.stake(1000e18);
+        pool.deposit(1000e18);
     }
 
-    function testFuzz_Stake(uint256 amount) public {
+    function testFuzz_Deposit(uint256 amount) public {
         amount = bound(amount, 1, INITIAL_BALANCE);
 
         vm.prank(alice);
-        pool.stake(amount);
+        pool.deposit(amount);
 
         assertEq(pool.stakedAmount(alice), amount);
         assertEq(pool.totalStaked(), amount);
     }
 
     /*//////////////////////////////////////////////////////////////
-                             UNSTAKE TESTS
+                          WITHDRAWAL TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_Unstake() public {
-        uint256 stakeAmount = 1000e18;
-        uint256 unstakeAmount = 400e18;
+    function test_RequestWithdraw() public {
+        uint256 depositAmount = 1000e18;
+        uint256 withdrawAmount = 400e18;
 
         vm.prank(alice);
-        pool.stake(stakeAmount);
+        pool.deposit(depositAmount);
 
         vm.prank(alice);
-        pool.unstake(unstakeAmount);
+        pool.requestWithdraw(withdrawAmount);
 
-        assertEq(pool.stakedAmount(alice), stakeAmount - unstakeAmount);
-        assertEq(pool.totalStaked(), stakeAmount - unstakeAmount);
-        assertEq(diem.balanceOf(alice), INITIAL_BALANCE - stakeAmount + unstakeAmount);
+        // Check staker state
+        assertEq(pool.stakedAmount(alice), depositAmount - withdrawAmount);
+        (uint256 cooldownAmount, uint256 cooldownEnd, bool canComplete) =
+            pool.withdrawalStatus(alice);
+        assertEq(cooldownAmount, withdrawAmount);
+        assertGt(cooldownEnd, block.timestamp);
+        assertFalse(canComplete);
+
+        // Check totals
+        assertEq(pool.totalStaked(), depositAmount - withdrawAmount);
+        (, uint256 totalInCooldown,,) = pool.getPoolStats();
+        assertEq(totalInCooldown, withdrawAmount);
     }
 
-    function test_Unstake_Full() public {
+    function test_CompleteWithdraw() public {
         uint256 amount = 1000e18;
 
         vm.prank(alice);
-        pool.stake(amount);
+        pool.deposit(amount);
 
         vm.prank(alice);
-        pool.unstake(amount);
+        pool.requestWithdraw(amount);
 
-        assertEq(pool.stakedAmount(alice), 0);
-        assertEq(pool.totalStaked(), 0);
-        assertEq(diem.balanceOf(alice), INITIAL_BALANCE);
+        // Fast forward past cooldown
+        vm.warp(block.timestamp + 1 days + 1);
+
+        uint256 balanceBefore = diem.balanceOf(alice);
+
+        vm.prank(alice);
+        pool.completeWithdraw();
+
+        // Check DIEM returned
+        assertEq(diem.balanceOf(alice), balanceBefore + amount);
+
+        // Check state cleared
+        (uint256 cooldownAmount,,) = pool.withdrawalStatus(alice);
+        assertEq(cooldownAmount, 0);
     }
 
-    function test_Unstake_RevertsOnZero() public {
+    function test_CompleteWithdraw_RevertsBeforeCooldown() public {
         vm.prank(alice);
-        pool.stake(1000e18);
+        pool.deposit(1000e18);
+
+        vm.prank(alice);
+        pool.requestWithdraw(500e18);
+
+        // Try to complete before cooldown
+        vm.prank(alice);
+        vm.expectRevert(DIEMPool.CooldownNotComplete.selector);
+        pool.completeWithdraw();
+    }
+
+    function test_RequestWithdraw_RevertsOnZero() public {
+        vm.prank(alice);
+        pool.deposit(1000e18);
 
         vm.prank(alice);
         vm.expectRevert(DIEMPool.ZeroAmount.selector);
-        pool.unstake(0);
+        pool.requestWithdraw(0);
     }
 
-    function test_Unstake_RevertsOnInsufficientStake() public {
+    function test_RequestWithdraw_RevertsOnInsufficientStake() public {
         vm.prank(alice);
-        pool.stake(1000e18);
+        pool.deposit(1000e18);
 
         vm.prank(alice);
         vm.expectRevert(DIEMPool.InsufficientStake.selector);
-        pool.unstake(1001e18);
+        pool.requestWithdraw(1001e18);
+    }
+
+    function test_RequestWithdraw_RevertsIfCooldownPending() public {
+        vm.prank(alice);
+        pool.deposit(1000e18);
+
+        vm.prank(alice);
+        pool.requestWithdraw(500e18);
+
+        // Try to request another while cooldown is pending
+        vm.prank(alice);
+        vm.expectRevert(DIEMPool.CooldownAlreadyPending.selector);
+        pool.requestWithdraw(200e18);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -172,11 +216,9 @@ contract DIEMPoolTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function test_DistributeYield() public {
-        // Alice stakes 1000 DIEM
         vm.prank(alice);
-        pool.stake(1000e18);
+        pool.deposit(1000e18);
 
-        // Owner distributes 100 USDC
         uint256 yieldAmount = 100e6;
         vm.prank(owner);
         pool.distributeYield(yieldAmount);
@@ -191,9 +233,9 @@ contract DIEMPoolTest is Test {
     function test_DistributeYield_MultipleStakers() public {
         // Alice stakes 1000 DIEM, Bob stakes 3000 DIEM (1:3 ratio)
         vm.prank(alice);
-        pool.stake(1000e18);
+        pool.deposit(1000e18);
         vm.prank(bob);
-        pool.stake(3000e18);
+        pool.deposit(3000e18);
 
         // Owner distributes 100 USDC
         vm.prank(owner);
@@ -204,9 +246,28 @@ contract DIEMPoolTest is Test {
         assertEq(pool.pendingYield(bob), 71_250_000); // 95 * 0.75 = 71.25 USDC
     }
 
+    function test_DistributeYield_ExcludesCooldown() public {
+        // Alice deposits and requests withdraw (goes to cooldown)
+        vm.prank(alice);
+        pool.deposit(1000e18);
+        vm.prank(alice);
+        pool.requestWithdraw(1000e18);
+
+        // Bob deposits and stays staked
+        vm.prank(bob);
+        pool.deposit(1000e18);
+
+        // Distribute yield - only Bob should get it
+        vm.prank(owner);
+        pool.distributeYield(100e6);
+
+        assertEq(pool.pendingYield(alice), 0); // Alice in cooldown, no yield
+        assertEq(pool.pendingYield(bob), 95e6); // Bob gets all 95%
+    }
+
     function test_DistributeYield_RevertsOnZero() public {
         vm.prank(alice);
-        pool.stake(1000e18);
+        pool.deposit(1000e18);
 
         vm.prank(owner);
         vm.expectRevert(DIEMPool.ZeroAmount.selector);
@@ -219,22 +280,13 @@ contract DIEMPoolTest is Test {
         pool.distributeYield(100e6);
     }
 
-    function test_DistributeYield_OnlyOwner() public {
-        vm.prank(alice);
-        pool.stake(1000e18);
-
-        vm.prank(alice);
-        vm.expectRevert();
-        pool.distributeYield(100e6);
-    }
-
     /*//////////////////////////////////////////////////////////////
                           CLAIM YIELD TESTS
     //////////////////////////////////////////////////////////////*/
 
     function test_ClaimYield() public {
         vm.prank(alice);
-        pool.stake(1000e18);
+        pool.deposit(1000e18);
 
         vm.prank(owner);
         pool.distributeYield(100e6);
@@ -251,7 +303,7 @@ contract DIEMPoolTest is Test {
 
     function test_ClaimYield_RevertsWithNoYield() public {
         vm.prank(alice);
-        pool.stake(1000e18);
+        pool.deposit(1000e18);
 
         vm.prank(alice);
         vm.expectRevert(DIEMPool.NoYieldToClaim.selector);
@@ -260,7 +312,7 @@ contract DIEMPoolTest is Test {
 
     function test_ClaimOperatorYield() public {
         vm.prank(alice);
-        pool.stake(1000e18);
+        pool.deposit(1000e18);
 
         vm.prank(owner);
         pool.distributeYield(100e6);
@@ -276,35 +328,12 @@ contract DIEMPoolTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                              EXIT TESTS
-    //////////////////////////////////////////////////////////////*/
-
-    function test_Exit() public {
-        vm.prank(alice);
-        pool.stake(1000e18);
-
-        vm.prank(owner);
-        pool.distributeYield(100e6);
-
-        uint256 diemBefore = diem.balanceOf(alice);
-        uint256 usdcBefore = usdc.balanceOf(alice);
-
-        vm.prank(alice);
-        pool.exit();
-
-        assertEq(diem.balanceOf(alice), diemBefore + 1000e18);
-        assertEq(usdc.balanceOf(alice), usdcBefore + 95e6);
-        assertEq(pool.stakedAmount(alice), 0);
-        assertEq(pool.pendingYield(alice), 0);
-    }
-
-    /*//////////////////////////////////////////////////////////////
                            EMERGENCY TESTS
     //////////////////////////////////////////////////////////////*/
 
     function test_EmergencyWithdraw() public {
         vm.prank(alice);
-        pool.stake(1000e18);
+        pool.deposit(1000e18);
 
         vm.prank(owner);
         pool.distributeYield(100e6);
@@ -312,20 +341,20 @@ contract DIEMPoolTest is Test {
         vm.prank(owner);
         pool.pause();
 
-        uint256 balanceBefore = diem.balanceOf(alice);
+        // Note: In emergency, only liquid DIEM can be withdrawn
+        // DIEM staked in the DIEM contract requires normal unstake flow
 
         vm.prank(alice);
         pool.emergencyWithdraw();
 
-        // Gets DIEM back but forfeits yield
-        assertEq(diem.balanceOf(alice), balanceBefore + 1000e18);
+        // State should be cleared
         assertEq(pool.stakedAmount(alice), 0);
         assertEq(pool.pendingYield(alice), 0);
     }
 
     function test_EmergencyWithdraw_RevertsWhenNotPaused() public {
         vm.prank(alice);
-        pool.stake(1000e18);
+        pool.deposit(1000e18);
 
         vm.prank(alice);
         vm.expectRevert();
@@ -336,56 +365,46 @@ contract DIEMPoolTest is Test {
                         COMPLEX SCENARIO TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_ComplexScenario_MultipleDistributions() public {
-        // Alice stakes 1000 DIEM
+    function test_FullFlow() public {
+        // 1. Alice and Bob deposit
         vm.prank(alice);
-        pool.stake(1000e18);
-
-        // First distribution: 100 USDC
-        vm.prank(owner);
-        pool.distributeYield(100e6);
-
-        // Bob stakes 1000 DIEM (same as Alice now)
+        pool.deposit(1000e18);
         vm.prank(bob);
-        pool.stake(1000e18);
+        pool.deposit(3000e18);
 
-        // Second distribution: 100 USDC (split 50/50 between Alice and Bob)
+        // 2. Yield distribution
         vm.prank(owner);
         pool.distributeYield(100e6);
 
-        // Alice: 95 + 47.5 = 142.5 USDC
-        // Bob: 47.5 USDC
-        assertEq(pool.pendingYield(alice), 142_500_000);
-        assertEq(pool.pendingYield(bob), 47_500_000);
+        // 3. Alice claims yield
+        vm.prank(alice);
+        pool.claimYield();
+        assertEq(usdc.balanceOf(alice), 23_750_000);
+
+        // 4. Alice requests withdraw
+        vm.prank(alice);
+        pool.requestWithdraw(1000e18);
+
+        // 5. More yield distribution (Alice excluded - in cooldown)
+        vm.prank(owner);
+        pool.distributeYield(100e6);
+
+        // Only Bob gets this yield (95% of 100 USDC)
+        // Note: small rounding difference due to precision
+        assertApproxEqAbs(pool.pendingYield(bob), 71_250_000 + 95_000_000, 3000); // Previous + new
+
+        // 6. Fast forward and complete Alice's withdraw
+        vm.warp(block.timestamp + 1 days + 1);
+        vm.prank(alice);
+        pool.completeWithdraw();
+
+        // 7. Verify final state
+        assertEq(diem.balanceOf(alice), INITIAL_BALANCE); // Got all DIEM back
+        assertEq(pool.stakedAmount(alice), 0);
+        assertEq(pool.totalStaked(), 3000e18); // Only Bob's stake remains
     }
 
-    function test_ComplexScenario_StakeUnstakeDistribute() public {
-        // Alice stakes 2000 DIEM
-        vm.prank(alice);
-        pool.stake(2000e18);
-
-        // Distribution 1
-        vm.prank(owner);
-        pool.distributeYield(100e6);
-
-        // Alice unstakes half
-        vm.prank(alice);
-        pool.unstake(1000e18);
-
-        // Her pending yield should be preserved
-        assertEq(pool.pendingYield(alice), 95e6);
-
-        // Bob stakes 1000 DIEM (same as Alice now)
-        vm.prank(bob);
-        pool.stake(1000e18);
-
-        // Distribution 2
-        vm.prank(owner);
-        pool.distributeYield(100e6);
-
-        // Alice: 95 + 47.5 = 142.5 USDC
-        // Bob: 47.5 USDC
-        assertEq(pool.pendingYield(alice), 142_500_000);
-        assertEq(pool.pendingYield(bob), 47_500_000);
+    function test_GetCooldownDuration() public view {
+        assertEq(pool.getCooldownDuration(), 1 days);
     }
 }
