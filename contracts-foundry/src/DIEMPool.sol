@@ -11,25 +11,29 @@ import { IDIEM } from "./interfaces/IDIEM.sol";
 /**
  * @title DIEMPool
  * @author DIEMpool Team
- * @notice A non-custodial staking pool for DIEM tokens that enables yield generation
- *         from AI inference credit sales.
+ * @notice A share-based staking pool for DIEM tokens with integrated credit marketplace.
  *
  * @dev Architecture:
- * - Users deposit DIEM tokens to this contract
- * - DIEMPool stakes the DIEM to the DIEM contract (generating inference credits)
- * - The pooled credits are associated with the operator's Venice account (off-chain)
- * - Buyers pay for inference credits (off-chain), revenue flows to this contract
- * - 95% of revenue goes to stakers proportionally, 5% to the operator
  *
- * Withdrawal Flow (due to DIEM's cooldown):
- * 1. User calls requestWithdraw(amount) - initiates unstake on DIEM contract
- * 2. Wait for cooldown period (currently 1 day on DIEM contract)
- * 3. User calls completeWithdraw() - completes unstake and transfers DIEM to user
+ * STAKERS:
+ * - Deposit DIEM → receive shares proportional to pool ownership
+ * - Shares earn yield from credit sales (USDC)
+ * - Yield accrues automatically via accRewardPerShare pattern
+ * - Claim USDC anytime without affecting other stakers
  *
- * Security Model:
- * - Non-custodial: Only the original staker can withdraw their DIEM
- * - Operator cannot withdraw staked DIEM, only their fee share
- * - All staker accounting is on-chain and verifiable
+ * BUYERS:
+ * - Purchase inference credits with USDC
+ * - Price decreases throughout the day if credits go unused
+ * - USDC payments flow directly to the pool
+ *
+ * DAILY RESET:
+ * - Available credits reset at midnight UTC
+ * - Triggered automatically by deposit/withdraw/buy operations
+ * - Or manually via resetDay()
+ *
+ * WITHDRAWAL FLOW (due to DIEM's cooldown):
+ * 1. requestWithdraw(amount) - starts 1-day cooldown
+ * 2. completeWithdraw() - after cooldown, get DIEM back
  */
 contract DIEMPool is ReentrancyGuard, Pausable, Ownable {
     using SafeERC20 for IERC20;
@@ -38,60 +42,87 @@ contract DIEMPool is ReentrancyGuard, Pausable, Ownable {
                                 CONSTANTS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Fee percentage taken by operator (5% = 500 basis points)
+    /// @notice Operator fee (5% = 500 basis points)
     uint256 public constant OPERATOR_FEE_BPS = 500;
-
-    /// @notice Basis points denominator
     uint256 public constant BPS_DENOMINATOR = 10_000;
 
-    /// @notice Precision for accumulated yield per share calculations
+    /// @notice Precision for share and reward calculations
     uint256 public constant PRECISION = 1e18;
+
+    /// @notice Credit precision (1 credit = 1e6 = $1 worth of inference)
+    uint256 public constant CREDIT_PRECISION = 1e6;
+
+    /// @notice Base price: 80% of face value ($0.80 per $1 of credits)
+    uint256 public constant BASE_PRICE_BPS = 8000;
+
+    /// @notice Minimum price: 50% of face value ($0.50 per $1 of credits)
+    uint256 public constant MIN_PRICE_BPS = 5000;
+
+    /// @notice Day duration
+    uint256 public constant DAY_DURATION = 1 days;
 
     /*//////////////////////////////////////////////////////////////
                                  STORAGE
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice The DIEM token contract (on Base: 0xf4d97f2da56e8c3098f3a8d538db630a2606a024)
+    /// @notice DIEM token (Base: 0xf4d97f2da56e8c3098f3a8d538db630a2606a024)
     IDIEM public immutable DIEM;
 
-    /// @notice The token used for yield payments (e.g., USDC)
-    IERC20 public immutable yieldToken;
+    /// @notice USDC token for payments
+    IERC20 public immutable USDC;
 
-    /// @notice Total DIEM deposited and actively staked in the pool
-    uint256 public totalStaked;
+    // ============ Share Accounting ============
 
-    /// @notice Total DIEM currently in cooldown (requested withdrawal)
-    uint256 public totalInCooldown;
+    /// @notice Total shares outstanding
+    uint256 public totalShares;
 
-    /// @notice Accumulated yield per staked DIEM (scaled by PRECISION)
-    uint256 public accYieldPerShare;
+    /// @notice Total DIEM actively staked (not in cooldown)
+    uint256 public totalStakedDIEM;
 
-    /// @notice Pending yield for operator
-    uint256 public operatorPendingYield;
+    /// @notice Accumulated USDC reward per share (scaled by PRECISION)
+    uint256 public accRewardPerShare;
 
-    /// @notice Staker info
+    /// @notice Pending USDC for operator
+    uint256 public operatorPendingUSDC;
+
+    // ============ Credit Market ============
+
+    /// @notice Start of the current day (UTC midnight timestamp)
+    uint256 public dayStartTimestamp;
+
+    /// @notice Credits available today (in CREDIT_PRECISION units)
+    uint256 public availableCreditsToday;
+
+    /// @notice Total credits sold today (for analytics)
+    uint256 public creditsSoldToday;
+
+    // ============ Staker Info ============
+
     struct StakerInfo {
-        uint256 stakedAmount; // Amount of DIEM staked and earning yield
-        uint256 rewardDebt; // Reward debt for yield calculation
-        uint256 pendingYield; // Unclaimed yield
-        uint256 cooldownAmount; // Amount in cooldown (pending withdrawal)
-        uint256 cooldownEnd; // Timestamp when cooldown ends
+        uint256 shares; // Share balance
+        uint256 rewardDebt; // For calculating pending rewards
+        uint256 pendingUSDC; // Unclaimed USDC yield
+        uint256 stakedDIEM; // DIEM actively staked
+        uint256 cooldownDIEM; // DIEM in cooldown
+        uint256 cooldownEnd; // When cooldown completes
     }
 
-    /// @notice Mapping of staker address to their info
     mapping(address => StakerInfo) public stakers;
 
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
 
-    event Deposited(address indexed user, uint256 amount);
-    event WithdrawRequested(address indexed user, uint256 amount, uint256 cooldownEnd);
-    event WithdrawCompleted(address indexed user, uint256 amount);
-    event YieldDistributed(uint256 totalAmount, uint256 stakerAmount, uint256 operatorAmount);
-    event YieldClaimed(address indexed user, uint256 amount);
-    event OperatorYieldClaimed(address indexed operator, uint256 amount);
-    event EmergencyWithdraw(address indexed user, uint256 amount);
+    event Deposited(address indexed user, uint256 diemAmount, uint256 sharesIssued);
+    event WithdrawRequested(address indexed user, uint256 diemAmount, uint256 cooldownEnd);
+    event WithdrawCompleted(address indexed user, uint256 diemAmount);
+    event WithdrawCancelled(address indexed user, uint256 diemAmount);
+    event YieldClaimed(address indexed user, uint256 usdcAmount);
+    event OperatorYieldClaimed(address indexed operator, uint256 usdcAmount);
+    event CreditsPurchased(
+        address indexed buyer, uint256 creditAmount, uint256 usdcPaid, uint256 pricePerCredit
+    );
+    event DayReset(uint256 newDayStart, uint256 availableCredits, uint256 previousDayUtilization);
 
     /*//////////////////////////////////////////////////////////////
                                  ERRORS
@@ -100,89 +131,147 @@ contract DIEMPool is ReentrancyGuard, Pausable, Ownable {
     error ZeroAmount();
     error ZeroAddress();
     error InsufficientStake();
+    error InsufficientCredits();
     error NoCooldownPending();
     error CooldownNotComplete();
-    error NoYieldToClaim();
-    error NoStakers();
     error CooldownAlreadyPending();
+    error NoYieldToClaim();
 
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    /**
-     * @notice Initialize the DIEMPool
-     * @param _diem Address of the DIEM token (0xf4d97f2da56e8c3098f3a8d538db630a2606a024 on Base)
-     * @param _yieldToken Address of the yield token (e.g., USDC)
-     * @param _owner Address of the operator/owner
-     */
-    constructor(address _diem, address _yieldToken, address _owner) Ownable(_owner) {
+    constructor(address _diem, address _usdc, address _owner) Ownable(_owner) {
         if (_diem == address(0)) revert ZeroAddress();
-        if (_yieldToken == address(0)) revert ZeroAddress();
+        if (_usdc == address(0)) revert ZeroAddress();
 
         DIEM = IDIEM(_diem);
-        yieldToken = IERC20(_yieldToken);
+        USDC = IERC20(_usdc);
+
+        // Initialize day
+        dayStartTimestamp = _startOfDay(block.timestamp);
     }
 
     /*//////////////////////////////////////////////////////////////
-                            DEPOSIT FUNCTION
+                            DAILY RESET
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @notice Deposit DIEM tokens to the pool
+     * @notice Check and reset day if needed
+     * @dev Called internally by deposit, withdraw, buyCredits
+     */
+    function _checkAndResetDay() internal {
+        if (block.timestamp >= dayStartTimestamp + DAY_DURATION) {
+            uint256 previousUtilization = 0;
+            if (availableCreditsToday > 0) {
+                previousUtilization = (creditsSoldToday * BPS_DENOMINATOR)
+                    / (availableCreditsToday + creditsSoldToday);
+            }
+
+            // Reset for new day
+            dayStartTimestamp = _startOfDay(block.timestamp);
+
+            // Available credits = totalStakedDIEM * $1/day (in CREDIT_PRECISION)
+            // 1 DIEM (1e18) generates 1e6 credits per day
+            availableCreditsToday = (totalStakedDIEM * CREDIT_PRECISION) / PRECISION;
+            creditsSoldToday = 0;
+
+            emit DayReset(dayStartTimestamp, availableCreditsToday, previousUtilization);
+        }
+    }
+
+    /**
+     * @notice Manually trigger day reset (anyone can call)
+     */
+    function resetDay() external {
+        _checkAndResetDay();
+    }
+
+    /**
+     * @notice Get start of day (midnight UTC) for a timestamp
+     */
+    function _startOfDay(uint256 timestamp) internal pure returns (uint256) {
+        return (timestamp / DAY_DURATION) * DAY_DURATION;
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            STAKER FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @notice Deposit DIEM to the pool and receive shares
      * @param amount Amount of DIEM to deposit
-     * @dev Transfers DIEM from user, then stakes it to the DIEM contract
      */
     function deposit(uint256 amount) external nonReentrant whenNotPaused {
         if (amount == 0) revert ZeroAmount();
 
-        // Update staker's pending yield before changing their stake
-        _updateStakerYield(msg.sender);
+        _checkAndResetDay();
+        _updateStakerRewards(msg.sender);
 
-        // Transfer DIEM from user to this contract
+        // Calculate shares to issue
+        uint256 sharesToIssue;
+        if (totalShares == 0) {
+            sharesToIssue = amount; // 1:1 for first deposit
+        } else {
+            // Proportional to existing shares/DIEM ratio
+            sharesToIssue = (amount * totalShares) / totalStakedDIEM;
+        }
+
+        // Transfer DIEM from user
         IERC20(address(DIEM)).safeTransferFrom(msg.sender, address(this), amount);
 
-        // Stake the DIEM to the DIEM contract (generates inference credits)
+        // Stake DIEM to DIEM contract
         DIEM.stake(amount);
 
-        // Update staker info
+        // Update state
         StakerInfo storage staker = stakers[msg.sender];
-        staker.stakedAmount += amount;
-        staker.rewardDebt = (staker.stakedAmount * accYieldPerShare) / PRECISION;
+        staker.shares += sharesToIssue;
+        staker.stakedDIEM += amount;
+        staker.rewardDebt = (staker.shares * accRewardPerShare) / PRECISION;
 
-        // Update total staked
-        totalStaked += amount;
+        totalShares += sharesToIssue;
+        totalStakedDIEM += amount;
 
-        emit Deposited(msg.sender, amount);
+        // Update available credits for today
+        availableCreditsToday += (amount * CREDIT_PRECISION) / PRECISION;
+
+        emit Deposited(msg.sender, amount, sharesToIssue);
     }
 
-    /*//////////////////////////////////////////////////////////////
-                          WITHDRAWAL FUNCTIONS
-    //////////////////////////////////////////////////////////////*/
-
     /**
-     * @notice Request withdrawal of DIEM tokens (starts cooldown)
+     * @notice Request withdrawal (starts cooldown)
      * @param amount Amount of DIEM to withdraw
-     * @dev Initiates unstake on DIEM contract. User must call completeWithdraw after cooldown.
      */
     function requestWithdraw(uint256 amount) external nonReentrant {
-        StakerInfo storage staker = stakers[msg.sender];
         if (amount == 0) revert ZeroAmount();
-        if (staker.stakedAmount < amount) revert InsufficientStake();
-        if (staker.cooldownAmount > 0) revert CooldownAlreadyPending();
 
-        // Update staker's pending yield before changing their stake
-        _updateStakerYield(msg.sender);
+        StakerInfo storage staker = stakers[msg.sender];
+        if (staker.stakedDIEM < amount) revert InsufficientStake();
+        if (staker.cooldownDIEM > 0) revert CooldownAlreadyPending();
 
-        // Update staker info - move from staked to cooldown
-        staker.stakedAmount -= amount;
-        staker.cooldownAmount = amount;
+        _checkAndResetDay();
+        _updateStakerRewards(msg.sender);
+
+        // Calculate shares to burn (proportional)
+        uint256 sharesToBurn = (amount * staker.shares) / staker.stakedDIEM;
+
+        // Update state
+        staker.shares -= sharesToBurn;
+        staker.stakedDIEM -= amount;
+        staker.cooldownDIEM = amount;
         staker.cooldownEnd = block.timestamp + DIEM.cooldownDuration();
-        staker.rewardDebt = (staker.stakedAmount * accYieldPerShare) / PRECISION;
+        staker.rewardDebt = (staker.shares * accRewardPerShare) / PRECISION;
 
-        // Update totals
-        totalStaked -= amount;
-        totalInCooldown += amount;
+        totalShares -= sharesToBurn;
+        totalStakedDIEM -= amount;
+
+        // Reduce available credits
+        uint256 creditsToRemove = (amount * CREDIT_PRECISION) / PRECISION;
+        if (creditsToRemove > availableCreditsToday) {
+            availableCreditsToday = 0;
+        } else {
+            availableCreditsToday -= creditsToRemove;
+        }
 
         // Initiate unstake on DIEM contract
         DIEM.initiateUnstake(amount);
@@ -191,22 +280,20 @@ contract DIEMPool is ReentrancyGuard, Pausable, Ownable {
     }
 
     /**
-     * @notice Complete withdrawal after cooldown period
-     * @dev Completes unstake on DIEM contract and transfers DIEM to user
+     * @notice Complete withdrawal after cooldown
      */
     function completeWithdraw() external nonReentrant {
         StakerInfo storage staker = stakers[msg.sender];
-        if (staker.cooldownAmount == 0) revert NoCooldownPending();
+        if (staker.cooldownDIEM == 0) revert NoCooldownPending();
         if (block.timestamp < staker.cooldownEnd) revert CooldownNotComplete();
 
-        uint256 amount = staker.cooldownAmount;
+        _checkAndResetDay();
 
-        // Reset cooldown state
-        staker.cooldownAmount = 0;
+        uint256 amount = staker.cooldownDIEM;
+        staker.cooldownDIEM = 0;
         staker.cooldownEnd = 0;
-        totalInCooldown -= amount;
 
-        // Complete unstake on DIEM contract (DIEM transfers to this contract)
+        // Complete unstake on DIEM contract
         DIEM.unstake();
 
         // Transfer DIEM to user
@@ -216,185 +303,174 @@ contract DIEMPool is ReentrancyGuard, Pausable, Ownable {
     }
 
     /**
-     * @notice Cancel a pending withdrawal request
-     * @dev Re-stakes the cooldown amount back to active staking
+     * @notice Cancel pending withdrawal and re-stake
      */
     function cancelWithdraw() external nonReentrant {
         StakerInfo storage staker = stakers[msg.sender];
-        if (staker.cooldownAmount == 0) revert NoCooldownPending();
+        if (staker.cooldownDIEM == 0) revert NoCooldownPending();
 
-        // Update staker's pending yield
-        _updateStakerYield(msg.sender);
+        _checkAndResetDay();
+        _updateStakerRewards(msg.sender);
 
-        uint256 amount = staker.cooldownAmount;
+        uint256 amount = staker.cooldownDIEM;
 
-        // Move back from cooldown to staked
-        staker.cooldownAmount = 0;
+        // Calculate shares to issue (at current ratio)
+        uint256 sharesToIssue;
+        if (totalShares == 0) {
+            sharesToIssue = amount;
+        } else {
+            sharesToIssue = (amount * totalShares) / totalStakedDIEM;
+        }
+
+        // Update state
+        staker.cooldownDIEM = 0;
         staker.cooldownEnd = 0;
-        staker.stakedAmount += amount;
-        staker.rewardDebt = (staker.stakedAmount * accYieldPerShare) / PRECISION;
+        staker.shares += sharesToIssue;
+        staker.stakedDIEM += amount;
+        staker.rewardDebt = (staker.shares * accRewardPerShare) / PRECISION;
 
-        // Update totals
-        totalInCooldown -= amount;
-        totalStaked += amount;
+        totalShares += sharesToIssue;
+        totalStakedDIEM += amount;
 
-        // Note: We can't cancel the unstake on DIEM contract directly
-        // The DIEM will complete unstake, then we re-stake it
-        // This is handled in the next deposit or by operator
+        // Add back to available credits
+        availableCreditsToday += (amount * CREDIT_PRECISION) / PRECISION;
 
-        emit Deposited(msg.sender, amount);
+        emit WithdrawCancelled(msg.sender, amount);
     }
 
-    /*//////////////////////////////////////////////////////////////
-                            YIELD FUNCTIONS
-    //////////////////////////////////////////////////////////////*/
-
     /**
-     * @notice Claim accumulated yield
+     * @notice Claim accrued USDC yield
      */
     function claimYield() external nonReentrant {
-        _updateStakerYield(msg.sender);
+        _checkAndResetDay();
+        _updateStakerRewards(msg.sender);
 
-        uint256 pending = stakers[msg.sender].pendingYield;
+        uint256 pending = stakers[msg.sender].pendingUSDC;
         if (pending == 0) revert NoYieldToClaim();
 
-        stakers[msg.sender].pendingYield = 0;
-        yieldToken.safeTransfer(msg.sender, pending);
+        stakers[msg.sender].pendingUSDC = 0;
+        USDC.safeTransfer(msg.sender, pending);
 
         emit YieldClaimed(msg.sender, pending);
     }
 
     /*//////////////////////////////////////////////////////////////
-                        YIELD DISTRIBUTION (OWNER)
+                          CREDIT MARKETPLACE
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @notice Distribute yield from credit sales to the pool
-     * @param amount Total yield amount in yield tokens
-     * @dev Called by operator after receiving payment from credit buyers
+     * @notice Buy inference credits with USDC
+     * @param creditAmount Amount of credits to buy (in CREDIT_PRECISION, 1e6 = $1)
+     * @return usdcCost Actual USDC paid
      */
-    function distributeYield(uint256 amount) external onlyOwner nonReentrant {
-        if (amount == 0) revert ZeroAmount();
-        if (totalStaked == 0) revert NoStakers();
+    function buyCredits(uint256 creditAmount)
+        external
+        nonReentrant
+        whenNotPaused
+        returns (uint256 usdcCost)
+    {
+        if (creditAmount == 0) revert ZeroAmount();
 
-        // Transfer yield tokens from operator to this contract
-        yieldToken.safeTransferFrom(msg.sender, address(this), amount);
+        _checkAndResetDay();
 
-        // Calculate operator fee (5%)
-        uint256 operatorFee = (amount * OPERATOR_FEE_BPS) / BPS_DENOMINATOR;
-        uint256 stakerAmount = amount - operatorFee;
+        if (creditAmount > availableCreditsToday) revert InsufficientCredits();
 
-        // Add to operator's pending yield
-        operatorPendingYield += operatorFee;
+        // Calculate price
+        uint256 priceBps = getCurrentPrice();
+        usdcCost = (creditAmount * priceBps) / BPS_DENOMINATOR;
 
-        // Update accumulated yield per share (only for actively staked, not cooldown)
-        accYieldPerShare += (stakerAmount * PRECISION) / totalStaked;
+        // Transfer USDC from buyer
+        USDC.safeTransferFrom(msg.sender, address(this), usdcCost);
 
-        emit YieldDistributed(amount, stakerAmount, operatorFee);
+        // Update credits
+        availableCreditsToday -= creditAmount;
+        creditsSoldToday += creditAmount;
+
+        // Distribute USDC to stakers (minus operator fee)
+        _distributeUSDC(usdcCost);
+
+        emit CreditsPurchased(msg.sender, creditAmount, usdcCost, priceBps);
     }
 
     /**
-     * @notice Claim operator's accumulated fees
+     * @notice Buy credits by specifying max USDC to spend
+     * @param maxUSDC Maximum USDC to spend
+     * @return creditAmount Credits received
      */
-    function claimOperatorYield() external onlyOwner nonReentrant {
-        uint256 pending = operatorPendingYield;
-        if (pending == 0) revert NoYieldToClaim();
+    function buyCreditsWithMaxUSDC(uint256 maxUSDC)
+        external
+        nonReentrant
+        whenNotPaused
+        returns (uint256 creditAmount)
+    {
+        if (maxUSDC == 0) revert ZeroAmount();
 
-        operatorPendingYield = 0;
-        yieldToken.safeTransfer(owner(), pending);
+        _checkAndResetDay();
 
-        emit OperatorYieldClaimed(owner(), pending);
-    }
+        uint256 priceBps = getCurrentPrice();
 
-    /*//////////////////////////////////////////////////////////////
-                         OPERATOR MAINTENANCE
-    //////////////////////////////////////////////////////////////*/
+        // Calculate credits: credits = usdc * 10000 / price
+        creditAmount = (maxUSDC * BPS_DENOMINATOR) / priceBps;
 
-    /**
-     * @notice Re-stake any DIEM that completed unstake but wasn't withdrawn
-     * @dev Handles edge cases where cancelWithdraw was called
-     */
-    function restakeUnstakedDiem() external onlyOwner nonReentrant {
-        uint256 unstakedBalance = IERC20(address(DIEM)).balanceOf(address(this));
-        if (unstakedBalance > 0) {
-            DIEM.stake(unstakedBalance);
-        }
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                            VIEW FUNCTIONS
-    //////////////////////////////////////////////////////////////*/
-
-    /**
-     * @notice Get staker's current staked amount
-     * @param user Address of the staker
-     * @return Amount of DIEM actively staked (earning yield)
-     */
-    function stakedAmount(address user) external view returns (uint256) {
-        return stakers[user].stakedAmount;
-    }
-
-    /**
-     * @notice Get staker's pending yield (including not-yet-updated)
-     * @param user Address of the staker
-     * @return Total pending yield
-     */
-    function pendingYield(address user) external view returns (uint256) {
-        StakerInfo storage staker = stakers[user];
-
-        uint256 accumulatedYield = (staker.stakedAmount * accYieldPerShare) / PRECISION;
-        uint256 pendingFromAcc = 0;
-
-        if (accumulatedYield > staker.rewardDebt) {
-            pendingFromAcc = accumulatedYield - staker.rewardDebt;
+        if (creditAmount > availableCreditsToday) {
+            creditAmount = availableCreditsToday;
         }
 
-        return staker.pendingYield + pendingFromAcc;
+        if (creditAmount == 0) revert InsufficientCredits();
+
+        // Recalculate actual cost
+        uint256 actualCost = (creditAmount * priceBps) / BPS_DENOMINATOR;
+
+        // Transfer USDC from buyer
+        USDC.safeTransferFrom(msg.sender, address(this), actualCost);
+
+        // Update credits
+        availableCreditsToday -= creditAmount;
+        creditsSoldToday += creditAmount;
+
+        // Distribute USDC to stakers
+        _distributeUSDC(actualCost);
+
+        emit CreditsPurchased(msg.sender, creditAmount, actualCost, priceBps);
     }
 
     /**
-     * @notice Get staker's withdrawal status
-     * @param user Address of the staker
-     * @return amount Amount in cooldown
-     * @return cooldownEnd Timestamp when cooldown ends (0 if none)
-     * @return canComplete Whether completeWithdraw can be called
+     * @notice Get current credit price in basis points of face value
+     * @return priceBps Price (e.g., 8000 = $0.80 per $1 credit)
+     *
+     * @dev Pricing model:
+     * - Starts at BASE_PRICE (80%) at start of day
+     * - Decreases toward MIN_PRICE (50%) as day progresses IF credits are unused
+     * - Higher utilization = less discount
      */
-    function withdrawalStatus(address user)
-        external
-        view
-        returns (uint256 amount, uint256 cooldownEnd, bool canComplete)
-    {
-        StakerInfo storage staker = stakers[user];
-        amount = staker.cooldownAmount;
-        cooldownEnd = staker.cooldownEnd;
-        canComplete = amount > 0 && block.timestamp >= cooldownEnd;
-    }
+    function getCurrentPrice() public view returns (uint256 priceBps) {
+        // If new day needed, return base price
+        if (block.timestamp >= dayStartTimestamp + DAY_DURATION) {
+            return BASE_PRICE_BPS;
+        }
 
-    /**
-     * @notice Get pool statistics
-     * @return _totalStaked Total DIEM actively staked
-     * @return _totalInCooldown Total DIEM in cooldown
-     * @return _accYieldPerShare Accumulated yield per share
-     * @return _operatorPendingYield Pending yield for operator
-     */
-    function getPoolStats()
-        external
-        view
-        returns (
-            uint256 _totalStaked,
-            uint256 _totalInCooldown,
-            uint256 _accYieldPerShare,
-            uint256 _operatorPendingYield
-        )
-    {
-        return (totalStaked, totalInCooldown, accYieldPerShare, operatorPendingYield);
-    }
+        // Time progress through day (0 to PRECISION)
+        uint256 timeProgress = ((block.timestamp - dayStartTimestamp) * PRECISION) / DAY_DURATION;
 
-    /**
-     * @notice Get the cooldown duration from DIEM contract
-     */
-    function getCooldownDuration() external view returns (uint256) {
-        return DIEM.cooldownDuration();
+        // Utilization (0 to PRECISION)
+        uint256 totalCreditsToday = availableCreditsToday + creditsSoldToday;
+        uint256 utilizationPct = 0;
+        if (totalCreditsToday > 0) {
+            utilizationPct = (creditsSoldToday * PRECISION) / totalCreditsToday;
+        }
+
+        // Unused ratio (inverted utilization)
+        uint256 unusedPct = PRECISION - utilizationPct;
+
+        // Max discount based on time and unused credits
+        // Discount increases with time AND with unused percentage
+        uint256 maxDiscount = BASE_PRICE_BPS - MIN_PRICE_BPS; // 3000 bps = 30%
+        uint256 discount = (maxDiscount * timeProgress * unusedPct) / (PRECISION * PRECISION);
+
+        priceBps = BASE_PRICE_BPS - discount;
+        if (priceBps < MIN_PRICE_BPS) {
+            priceBps = MIN_PRICE_BPS;
+        }
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -402,70 +478,160 @@ contract DIEMPool is ReentrancyGuard, Pausable, Ownable {
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @notice Update a staker's pending yield based on accumulated yield
-     * @param user Address of the staker
+     * @notice Distribute incoming USDC to stakers
      */
-    function _updateStakerYield(address user) internal {
+    function _distributeUSDC(uint256 amount) internal {
+        if (totalShares == 0) {
+            // No stakers, all goes to operator
+            operatorPendingUSDC += amount;
+            return;
+        }
+
+        // Operator fee (5%)
+        uint256 operatorFee = (amount * OPERATOR_FEE_BPS) / BPS_DENOMINATOR;
+        uint256 stakerAmount = amount - operatorFee;
+
+        operatorPendingUSDC += operatorFee;
+
+        // Update accumulated reward per share
+        accRewardPerShare += (stakerAmount * PRECISION) / totalShares;
+    }
+
+    /**
+     * @notice Update a staker's pending rewards
+     */
+    function _updateStakerRewards(address user) internal {
         StakerInfo storage staker = stakers[user];
 
-        if (staker.stakedAmount > 0) {
-            uint256 accumulatedYield = (staker.stakedAmount * accYieldPerShare) / PRECISION;
-            if (accumulatedYield > staker.rewardDebt) {
-                staker.pendingYield += accumulatedYield - staker.rewardDebt;
+        if (staker.shares > 0) {
+            uint256 accumulatedReward = (staker.shares * accRewardPerShare) / PRECISION;
+            if (accumulatedReward > staker.rewardDebt) {
+                staker.pendingUSDC += accumulatedReward - staker.rewardDebt;
             }
         }
 
-        staker.rewardDebt = (staker.stakedAmount * accYieldPerShare) / PRECISION;
+        staker.rewardDebt = (staker.shares * accRewardPerShare) / PRECISION;
     }
 
     /*//////////////////////////////////////////////////////////////
-                         EMERGENCY FUNCTIONS
+                           OPERATOR FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @notice Pause the contract (prevents new deposits)
+     * @notice Claim operator's accumulated fees
      */
+    function claimOperatorYield() external onlyOwner nonReentrant {
+        uint256 pending = operatorPendingUSDC;
+        if (pending == 0) revert NoYieldToClaim();
+
+        operatorPendingUSDC = 0;
+        USDC.safeTransfer(owner(), pending);
+
+        emit OperatorYieldClaimed(owner(), pending);
+    }
+
+    /**
+     * @notice Re-stake any liquid DIEM (edge case handling)
+     */
+    function restakeUnstakedDiem() external onlyOwner nonReentrant {
+        uint256 balance = IERC20(address(DIEM)).balanceOf(address(this));
+        if (balance > 0) {
+            DIEM.stake(balance);
+        }
+    }
+
     function pause() external onlyOwner {
         _pause();
     }
 
-    /**
-     * @notice Unpause the contract
-     */
     function unpause() external onlyOwner {
         _unpause();
     }
 
+    /*//////////////////////////////////////////////////////////////
+                            VIEW FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+
     /**
-     * @notice Emergency withdrawal (only when paused)
-     * @dev Forfeits pending yield. Only withdraws what's available in pool.
+     * @notice Get staker's pending USDC yield
      */
-    function emergencyWithdraw() external whenPaused nonReentrant {
-        StakerInfo storage staker = stakers[msg.sender];
-        uint256 totalUserDiem = staker.stakedAmount + staker.cooldownAmount;
+    function pendingYield(address user) external view returns (uint256) {
+        StakerInfo storage staker = stakers[user];
 
-        if (totalUserDiem == 0) revert ZeroAmount();
+        uint256 accReward = accRewardPerShare;
+        uint256 accumulated = (staker.shares * accReward) / PRECISION;
+        uint256 pending = staker.pendingUSDC;
 
-        // Update totals
-        totalStaked -= staker.stakedAmount;
-        totalInCooldown -= staker.cooldownAmount;
-
-        // Reset staker info (pending yield is forfeited in emergency)
-        staker.stakedAmount = 0;
-        staker.cooldownAmount = 0;
-        staker.cooldownEnd = 0;
-        staker.rewardDebt = 0;
-        staker.pendingYield = 0;
-
-        // Transfer available DIEM balance to user
-        // Note: Some DIEM may still be staked in DIEM contract
-        uint256 available = IERC20(address(DIEM)).balanceOf(address(this));
-        uint256 toTransfer = totalUserDiem > available ? available : totalUserDiem;
-
-        if (toTransfer > 0) {
-            IERC20(address(DIEM)).safeTransfer(msg.sender, toTransfer);
+        if (accumulated > staker.rewardDebt) {
+            pending += accumulated - staker.rewardDebt;
         }
 
-        emit EmergencyWithdraw(msg.sender, toTransfer);
+        return pending;
+    }
+
+    /**
+     * @notice Get staker's share of the pool
+     */
+    function getSharePercentage(address user) external view returns (uint256 bps) {
+        if (totalShares == 0) return 0;
+        return (stakers[user].shares * BPS_DENOMINATOR) / totalShares;
+    }
+
+    /**
+     * @notice Get withdrawal status
+     */
+    function withdrawalStatus(address user)
+        external
+        view
+        returns (uint256 amount, uint256 cooldownEnd, bool canComplete)
+    {
+        StakerInfo storage staker = stakers[user];
+        return (
+            staker.cooldownDIEM,
+            staker.cooldownEnd,
+            staker.cooldownDIEM > 0 && block.timestamp >= staker.cooldownEnd
+        );
+    }
+
+    /**
+     * @notice Get credit market status
+     */
+    function getCreditMarketStatus()
+        external
+        view
+        returns (
+            uint256 _availableCredits,
+            uint256 _creditsSold,
+            uint256 _currentPrice,
+            uint256 _timeRemainingInDay
+        )
+    {
+        uint256 dayEnd = dayStartTimestamp + DAY_DURATION;
+        uint256 timeRemaining = block.timestamp >= dayEnd ? 0 : dayEnd - block.timestamp;
+
+        return (availableCreditsToday, creditsSoldToday, getCurrentPrice(), timeRemaining);
+    }
+
+    /**
+     * @notice Get pool statistics
+     */
+    function getPoolStats()
+        external
+        view
+        returns (
+            uint256 _totalShares,
+            uint256 _totalStakedDIEM,
+            uint256 _accRewardPerShare,
+            uint256 _operatorPendingUSDC
+        )
+    {
+        return (totalShares, totalStakedDIEM, accRewardPerShare, operatorPendingUSDC);
+    }
+
+    /**
+     * @notice Get DIEM cooldown duration
+     */
+    function getCooldownDuration() external view returns (uint256) {
+        return DIEM.cooldownDuration();
     }
 }

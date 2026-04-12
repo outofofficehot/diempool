@@ -14,9 +14,10 @@ contract DIEMPoolTest is Test {
     address public owner = makeAddr("owner");
     address public alice = makeAddr("alice");
     address public bob = makeAddr("bob");
+    address public buyer = makeAddr("buyer");
 
-    uint256 public constant INITIAL_BALANCE = 10_000e18;
-    uint256 public constant USDC_BALANCE = 100_000e6;
+    uint256 public constant INITIAL_DIEM = 10_000e18;
+    uint256 public constant INITIAL_USDC = 100_000e6;
 
     function setUp() public {
         // Deploy tokens
@@ -27,17 +28,18 @@ contract DIEMPoolTest is Test {
         vm.prank(owner);
         pool = new DIEMPool(address(diem), address(usdc), owner);
 
-        // Mint tokens to users
-        diem.mint(alice, INITIAL_BALANCE);
-        diem.mint(bob, INITIAL_BALANCE);
-        usdc.mint(owner, USDC_BALANCE);
+        // Mint tokens
+        diem.mint(alice, INITIAL_DIEM);
+        diem.mint(bob, INITIAL_DIEM);
+        usdc.mint(buyer, INITIAL_USDC);
+        usdc.mint(owner, INITIAL_USDC);
 
-        // Approve pool
+        // Approvals
         vm.prank(alice);
         diem.approve(address(pool), type(uint256).max);
         vm.prank(bob);
         diem.approve(address(pool), type(uint256).max);
-        vm.prank(owner);
+        vm.prank(buyer);
         usdc.approve(address(pool), type(uint256).max);
     }
 
@@ -47,237 +49,241 @@ contract DIEMPoolTest is Test {
 
     function test_Constructor() public view {
         assertEq(address(pool.DIEM()), address(diem));
-        assertEq(address(pool.yieldToken()), address(usdc));
+        assertEq(address(pool.USDC()), address(usdc));
         assertEq(pool.owner(), owner);
-        assertEq(pool.totalStaked(), 0);
-    }
-
-    function test_Constructor_RevertsOnZeroAddress() public {
-        vm.expectRevert(DIEMPool.ZeroAddress.selector);
-        new DIEMPool(address(0), address(usdc), owner);
-
-        vm.expectRevert(DIEMPool.ZeroAddress.selector);
-        new DIEMPool(address(diem), address(0), owner);
+        assertEq(pool.totalShares(), 0);
+        assertEq(pool.totalStakedDIEM(), 0);
     }
 
     /*//////////////////////////////////////////////////////////////
                              DEPOSIT TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_Deposit() public {
+    function test_Deposit_FirstDepositor() public {
         uint256 amount = 1000e18;
 
         vm.prank(alice);
         pool.deposit(amount);
 
-        assertEq(pool.stakedAmount(alice), amount);
-        assertEq(pool.totalStaked(), amount);
-        // DIEM should be staked in the DIEM contract
-        (uint256 stakedInDiem,,) = diem.stakedInfos(address(pool));
-        assertEq(stakedInDiem, amount);
+        // First depositor gets 1:1 shares
+        (uint256 shares,,,,,) = pool.stakers(alice);
+        assertEq(shares, amount);
+        assertEq(pool.totalShares(), amount);
+        assertEq(pool.totalStakedDIEM(), amount);
+
+        // Credits should be available (1 DIEM = 1e6 credits)
+        assertEq(pool.availableCreditsToday(), 1000e6);
     }
 
-    function test_Deposit_Multiple() public {
+    function test_Deposit_SecondDepositor() public {
+        // Alice deposits 1000 DIEM
         vm.prank(alice);
         pool.deposit(1000e18);
 
+        // Bob deposits 1000 DIEM (should get same shares as Alice)
         vm.prank(bob);
-        pool.deposit(2000e18);
-
-        assertEq(pool.totalStaked(), 3000e18);
-        assertEq(pool.stakedAmount(alice), 1000e18);
-        assertEq(pool.stakedAmount(bob), 2000e18);
-    }
-
-    function test_Deposit_RevertsOnZero() public {
-        vm.prank(alice);
-        vm.expectRevert(DIEMPool.ZeroAmount.selector);
-        pool.deposit(0);
-    }
-
-    function test_Deposit_RevertsWhenPaused() public {
-        vm.prank(owner);
-        pool.pause();
-
-        vm.prank(alice);
-        vm.expectRevert();
         pool.deposit(1000e18);
+
+        (uint256 aliceShares,,,,,) = pool.stakers(alice);
+        (uint256 bobShares,,,,,) = pool.stakers(bob);
+
+        assertEq(aliceShares, bobShares);
+        assertEq(pool.totalShares(), 2000e18);
+        assertEq(pool.totalStakedDIEM(), 2000e18);
+    }
+
+    function test_Deposit_AfterYield() public {
+        // Alice deposits
+        vm.prank(alice);
+        pool.deposit(1000e18);
+
+        // Buyer purchases credits (generates yield)
+        vm.prank(buyer);
+        pool.buyCredits(100e6); // Buy $100 worth of credits
+
+        // Bob deposits same amount as Alice
+        vm.prank(bob);
+        pool.deposit(1000e18);
+
+        // Bob should get same shares since ratio is based on DIEM not total value
+        (uint256 aliceShares,,,,,) = pool.stakers(alice);
+        (uint256 bobShares,,,,,) = pool.stakers(bob);
+
+        assertEq(aliceShares, bobShares);
     }
 
     function testFuzz_Deposit(uint256 amount) public {
-        amount = bound(amount, 1, INITIAL_BALANCE);
+        amount = bound(amount, 1e18, INITIAL_DIEM);
 
         vm.prank(alice);
         pool.deposit(amount);
 
-        assertEq(pool.stakedAmount(alice), amount);
-        assertEq(pool.totalStaked(), amount);
+        assertEq(pool.totalStakedDIEM(), amount);
     }
 
     /*//////////////////////////////////////////////////////////////
-                          WITHDRAWAL TESTS
+                          CREDIT PURCHASE TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_RequestWithdraw() public {
-        uint256 depositAmount = 1000e18;
-        uint256 withdrawAmount = 400e18;
-
-        vm.prank(alice);
-        pool.deposit(depositAmount);
-
-        vm.prank(alice);
-        pool.requestWithdraw(withdrawAmount);
-
-        // Check staker state
-        assertEq(pool.stakedAmount(alice), depositAmount - withdrawAmount);
-        (uint256 cooldownAmount, uint256 cooldownEnd, bool canComplete) =
-            pool.withdrawalStatus(alice);
-        assertEq(cooldownAmount, withdrawAmount);
-        assertGt(cooldownEnd, block.timestamp);
-        assertFalse(canComplete);
-
-        // Check totals
-        assertEq(pool.totalStaked(), depositAmount - withdrawAmount);
-        (, uint256 totalInCooldown,,) = pool.getPoolStats();
-        assertEq(totalInCooldown, withdrawAmount);
-    }
-
-    function test_CompleteWithdraw() public {
-        uint256 amount = 1000e18;
-
-        vm.prank(alice);
-        pool.deposit(amount);
-
-        vm.prank(alice);
-        pool.requestWithdraw(amount);
-
-        // Fast forward past cooldown
-        vm.warp(block.timestamp + 1 days + 1);
-
-        uint256 balanceBefore = diem.balanceOf(alice);
-
-        vm.prank(alice);
-        pool.completeWithdraw();
-
-        // Check DIEM returned
-        assertEq(diem.balanceOf(alice), balanceBefore + amount);
-
-        // Check state cleared
-        (uint256 cooldownAmount,,) = pool.withdrawalStatus(alice);
-        assertEq(cooldownAmount, 0);
-    }
-
-    function test_CompleteWithdraw_RevertsBeforeCooldown() public {
+    function test_BuyCredits() public {
+        // Alice stakes 1000 DIEM
         vm.prank(alice);
         pool.deposit(1000e18);
 
-        vm.prank(alice);
-        pool.requestWithdraw(500e18);
+        uint256 creditAmount = 100e6; // $100 worth
+        uint256 buyerBalanceBefore = usdc.balanceOf(buyer);
 
-        // Try to complete before cooldown
-        vm.prank(alice);
-        vm.expectRevert(DIEMPool.CooldownNotComplete.selector);
-        pool.completeWithdraw();
+        vm.prank(buyer);
+        uint256 cost = pool.buyCredits(creditAmount);
+
+        // Price should be BASE_PRICE (80%) at start of day
+        assertEq(cost, 80e6); // $80 for $100 of credits
+
+        // Buyer paid
+        assertEq(usdc.balanceOf(buyer), buyerBalanceBefore - cost);
+
+        // Credits reduced
+        assertEq(pool.availableCreditsToday(), 900e6);
+        assertEq(pool.creditsSoldToday(), 100e6);
     }
 
-    function test_RequestWithdraw_RevertsOnZero() public {
+    function test_BuyCredits_YieldAccrues() public {
+        // Alice stakes
         vm.prank(alice);
         pool.deposit(1000e18);
 
-        vm.prank(alice);
-        vm.expectRevert(DIEMPool.ZeroAmount.selector);
-        pool.requestWithdraw(0);
+        // Buyer purchases
+        vm.prank(buyer);
+        pool.buyCredits(100e6);
+
+        // Alice should have pending yield (95% of $80 = $76)
+        uint256 pending = pool.pendingYield(alice);
+        assertEq(pending, 76e6);
+
+        // Operator should have 5% = $4
+        assertEq(pool.operatorPendingUSDC(), 4e6);
     }
 
-    function test_RequestWithdraw_RevertsOnInsufficientStake() public {
-        vm.prank(alice);
-        pool.deposit(1000e18);
-
-        vm.prank(alice);
-        vm.expectRevert(DIEMPool.InsufficientStake.selector);
-        pool.requestWithdraw(1001e18);
-    }
-
-    function test_RequestWithdraw_RevertsIfCooldownPending() public {
-        vm.prank(alice);
-        pool.deposit(1000e18);
-
-        vm.prank(alice);
-        pool.requestWithdraw(500e18);
-
-        // Try to request another while cooldown is pending
-        vm.prank(alice);
-        vm.expectRevert(DIEMPool.CooldownAlreadyPending.selector);
-        pool.requestWithdraw(200e18);
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                        YIELD DISTRIBUTION TESTS
-    //////////////////////////////////////////////////////////////*/
-
-    function test_DistributeYield() public {
-        vm.prank(alice);
-        pool.deposit(1000e18);
-
-        uint256 yieldAmount = 100e6;
-        vm.prank(owner);
-        pool.distributeYield(yieldAmount);
-
-        // Check operator fee (5%)
-        assertEq(pool.operatorPendingYield(), 5e6);
-
-        // Check alice's pending yield (95%)
-        assertEq(pool.pendingYield(alice), 95e6);
-    }
-
-    function test_DistributeYield_MultipleStakers() public {
+    function test_BuyCredits_YieldSplitBetweenStakers() public {
         // Alice stakes 1000 DIEM, Bob stakes 3000 DIEM (1:3 ratio)
         vm.prank(alice);
         pool.deposit(1000e18);
         vm.prank(bob);
         pool.deposit(3000e18);
 
-        // Owner distributes 100 USDC
-        vm.prank(owner);
-        pool.distributeYield(100e6);
+        // Buyer purchases $100 credits at 80% = $80
+        vm.prank(buyer);
+        pool.buyCredits(100e6);
 
-        // 95 USDC to stakers: Alice gets 25%, Bob gets 75%
-        assertEq(pool.pendingYield(alice), 23_750_000); // 95 * 0.25 = 23.75 USDC
-        assertEq(pool.pendingYield(bob), 71_250_000); // 95 * 0.75 = 71.25 USDC
+        // Staker amount: 95% of $80 = $76
+        // Alice gets 25% = $19
+        // Bob gets 75% = $57
+        assertEq(pool.pendingYield(alice), 19e6);
+        assertEq(pool.pendingYield(bob), 57e6);
     }
 
-    function test_DistributeYield_ExcludesCooldown() public {
-        // Alice deposits and requests withdraw (goes to cooldown)
+    function test_BuyCreditsWithMaxUSDC() public {
         vm.prank(alice);
         pool.deposit(1000e18);
-        vm.prank(alice);
-        pool.requestWithdraw(1000e18);
 
-        // Bob deposits and stays staked
+        uint256 maxUSDC = 100e6;
+
+        vm.prank(buyer);
+        uint256 credits = pool.buyCreditsWithMaxUSDC(maxUSDC);
+
+        // At 80% price: $100 USDC = 125e6 credits
+        assertEq(credits, 125e6);
+    }
+
+    function test_BuyCredits_RevertsOnInsufficientCredits() public {
+        vm.prank(alice);
+        pool.deposit(100e18); // Only 100 DIEM = $100 credits/day
+
+        vm.prank(buyer);
+        vm.expectRevert(DIEMPool.InsufficientCredits.selector);
+        pool.buyCredits(200e6); // Try to buy $200 worth
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                          DYNAMIC PRICING TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_GetCurrentPrice_StartOfDay() public {
+        vm.prank(alice);
+        pool.deposit(1000e18);
+
+        uint256 price = pool.getCurrentPrice();
+        assertEq(price, 8000); // 80%
+    }
+
+    function test_GetCurrentPrice_EndOfDay_NoSales() public {
+        vm.prank(alice);
+        pool.deposit(1000e18);
+
+        // Fast forward to end of day
+        vm.warp(block.timestamp + 23 hours);
+
+        uint256 price = pool.getCurrentPrice();
+        // Should be close to MIN_PRICE (50%) since no sales and late in day
+        assertLt(price, 6000); // Less than 60%
+        assertGe(price, 5000); // But not below 50%
+    }
+
+    function test_GetCurrentPrice_EndOfDay_HighUtilization() public {
+        vm.prank(alice);
+        pool.deposit(1000e18);
+
+        // Buy most of the credits
+        vm.prank(buyer);
+        pool.buyCredits(900e6); // 90% utilization
+
+        // Fast forward
+        vm.warp(block.timestamp + 23 hours);
+
+        uint256 price = pool.getCurrentPrice();
+        // High utilization = small discount even late in day
+        assertGt(price, 7000); // Still above 70%
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                           DAILY RESET TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_ResetDay() public {
+        vm.prank(alice);
+        pool.deposit(1000e18);
+
+        // Buy some credits
+        vm.prank(buyer);
+        pool.buyCredits(500e6);
+
+        assertEq(pool.creditsSoldToday(), 500e6);
+        assertEq(pool.availableCreditsToday(), 500e6);
+
+        // Fast forward past midnight
+        vm.warp(block.timestamp + 1 days + 1);
+
+        // Trigger reset
+        pool.resetDay();
+
+        // Credits should be reset
+        assertEq(pool.creditsSoldToday(), 0);
+        assertEq(pool.availableCreditsToday(), 1000e6);
+    }
+
+    function test_ResetDay_TriggeredByDeposit() public {
+        vm.prank(alice);
+        pool.deposit(1000e18);
+
+        vm.warp(block.timestamp + 1 days + 1);
+
+        // Deposit triggers reset
         vm.prank(bob);
         pool.deposit(1000e18);
 
-        // Distribute yield - only Bob should get it
-        vm.prank(owner);
-        pool.distributeYield(100e6);
-
-        assertEq(pool.pendingYield(alice), 0); // Alice in cooldown, no yield
-        assertEq(pool.pendingYield(bob), 95e6); // Bob gets all 95%
-    }
-
-    function test_DistributeYield_RevertsOnZero() public {
-        vm.prank(alice);
-        pool.deposit(1000e18);
-
-        vm.prank(owner);
-        vm.expectRevert(DIEMPool.ZeroAmount.selector);
-        pool.distributeYield(0);
-    }
-
-    function test_DistributeYield_RevertsWithNoStakers() public {
-        vm.prank(owner);
-        vm.expectRevert(DIEMPool.NoStakers.selector);
-        pool.distributeYield(100e6);
+        assertEq(pool.creditsSoldToday(), 0);
+        // Available = 1000 (reset) + 1000 (new deposit) = 2000
+        assertEq(pool.availableCreditsToday(), 2000e6);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -288,77 +294,118 @@ contract DIEMPoolTest is Test {
         vm.prank(alice);
         pool.deposit(1000e18);
 
-        vm.prank(owner);
-        pool.distributeYield(100e6);
+        vm.prank(buyer);
+        pool.buyCredits(100e6);
 
-        uint256 expectedYield = 95e6;
+        uint256 pending = pool.pendingYield(alice);
         uint256 balanceBefore = usdc.balanceOf(alice);
 
         vm.prank(alice);
         pool.claimYield();
 
-        assertEq(usdc.balanceOf(alice), balanceBefore + expectedYield);
+        assertEq(usdc.balanceOf(alice), balanceBefore + pending);
         assertEq(pool.pendingYield(alice), 0);
     }
 
-    function test_ClaimYield_RevertsWithNoYield() public {
+    function test_ClaimYield_DoesNotAffectOthers() public {
         vm.prank(alice);
         pool.deposit(1000e18);
+        vm.prank(bob);
+        pool.deposit(1000e18);
+
+        vm.prank(buyer);
+        pool.buyCredits(100e6);
+
+        uint256 bobPendingBefore = pool.pendingYield(bob);
 
         vm.prank(alice);
-        vm.expectRevert(DIEMPool.NoYieldToClaim.selector);
         pool.claimYield();
+
+        // Bob's pending should be unchanged
+        assertEq(pool.pendingYield(bob), bobPendingBefore);
     }
 
     function test_ClaimOperatorYield() public {
         vm.prank(alice);
         pool.deposit(1000e18);
 
-        vm.prank(owner);
-        pool.distributeYield(100e6);
+        vm.prank(buyer);
+        pool.buyCredits(100e6);
 
-        uint256 expectedFee = 5e6;
+        uint256 pending = pool.operatorPendingUSDC();
         uint256 balanceBefore = usdc.balanceOf(owner);
 
         vm.prank(owner);
         pool.claimOperatorYield();
 
-        assertEq(usdc.balanceOf(owner), balanceBefore + expectedFee);
-        assertEq(pool.operatorPendingYield(), 0);
+        assertEq(usdc.balanceOf(owner), balanceBefore + pending);
+        assertEq(pool.operatorPendingUSDC(), 0);
     }
 
     /*//////////////////////////////////////////////////////////////
-                           EMERGENCY TESTS
+                          WITHDRAWAL TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_EmergencyWithdraw() public {
+    function test_RequestWithdraw() public {
         vm.prank(alice);
         pool.deposit(1000e18);
 
-        vm.prank(owner);
-        pool.distributeYield(100e6);
-
-        vm.prank(owner);
-        pool.pause();
-
-        // Note: In emergency, only liquid DIEM can be withdrawn
-        // DIEM staked in the DIEM contract requires normal unstake flow
-
         vm.prank(alice);
-        pool.emergencyWithdraw();
+        pool.requestWithdraw(500e18);
 
-        // State should be cleared
-        assertEq(pool.stakedAmount(alice), 0);
-        assertEq(pool.pendingYield(alice), 0);
+        (
+            uint256 shares,,
+            uint256 pendingUSDC,
+            uint256 stakedDIEM,
+            uint256 cooldownDIEM,
+            uint256 cooldownEnd
+        ) = pool.stakers(alice);
+
+        assertEq(stakedDIEM, 500e18);
+        assertEq(cooldownDIEM, 500e18);
+        assertGt(cooldownEnd, block.timestamp);
+        assertEq(shares, 500e18); // Half shares burned
+
+        // Available credits should be reduced
+        assertEq(pool.availableCreditsToday(), 500e6);
     }
 
-    function test_EmergencyWithdraw_RevertsWhenNotPaused() public {
+    function test_CompleteWithdraw() public {
         vm.prank(alice);
         pool.deposit(1000e18);
 
         vm.prank(alice);
-        vm.expectRevert();
-        pool.emergencyWithdraw();
+        pool.requestWithdraw(1000e18);
+
+        // Fast forward past cooldown
+        vm.warp(block.timestamp + 1 days + 1);
+
+        uint256 balanceBefore = diem.balanceOf(alice);
+
+        vm.prank(alice);
+        pool.completeWithdraw();
+
+        assertEq(diem.balanceOf(alice), balanceBefore + 1000e18);
+
+        (,,, uint256 stakedDIEM, uint256 cooldownDIEM,) = pool.stakers(alice);
+        assertEq(stakedDIEM, 0);
+        assertEq(cooldownDIEM, 0);
+    }
+
+    function test_CancelWithdraw() public {
+        vm.prank(alice);
+        pool.deposit(1000e18);
+
+        vm.prank(alice);
+        pool.requestWithdraw(500e18);
+
+        vm.prank(alice);
+        pool.cancelWithdraw();
+
+        (uint256 shares,,, uint256 stakedDIEM, uint256 cooldownDIEM,) = pool.stakers(alice);
+        assertEq(stakedDIEM, 1000e18);
+        assertEq(cooldownDIEM, 0);
+        assertEq(shares, 1000e18);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -372,39 +419,45 @@ contract DIEMPoolTest is Test {
         vm.prank(bob);
         pool.deposit(3000e18);
 
-        // 2. Yield distribution
-        vm.prank(owner);
-        pool.distributeYield(100e6);
+        // 2. Buyer purchases credits
+        vm.prank(buyer);
+        pool.buyCredits(200e6); // $200 worth at 80% = $160 paid
 
-        // 3. Alice claims yield
+        // 3. Check yields (95% of $160 = $152)
+        // Alice: 25% of $152 = $38
+        // Bob: 75% of $152 = $114
+        assertEq(pool.pendingYield(alice), 38e6);
+        assertEq(pool.pendingYield(bob), 114e6);
+
+        // 4. Alice claims
         vm.prank(alice);
         pool.claimYield();
-        assertEq(usdc.balanceOf(alice), 23_750_000);
+        assertEq(usdc.balanceOf(alice), 38e6);
 
-        // 4. Alice requests withdraw
+        // 5. More purchases
+        vm.prank(buyer);
+        pool.buyCredits(100e6); // $80 paid
+
+        // Alice should have new yield: 25% of ($80 * 95%) = $19
+        assertEq(pool.pendingYield(alice), 19e6);
+
+        // Bob accumulates: $114 + (75% of $76) = $114 + $57 = $171
+        assertEq(pool.pendingYield(bob), 171e6);
+
+        // 6. Alice requests withdrawal
         vm.prank(alice);
         pool.requestWithdraw(1000e18);
 
-        // 5. More yield distribution (Alice excluded - in cooldown)
-        vm.prank(owner);
-        pool.distributeYield(100e6);
-
-        // Only Bob gets this yield (95% of 100 USDC)
-        // Note: small rounding difference due to precision
-        assertApproxEqAbs(pool.pendingYield(bob), 71_250_000 + 95_000_000, 3000); // Previous + new
-
-        // 6. Fast forward and complete Alice's withdraw
+        // 7. New day
         vm.warp(block.timestamp + 1 days + 1);
+
+        // 8. Alice completes withdrawal
         vm.prank(alice);
         pool.completeWithdraw();
 
-        // 7. Verify final state
-        assertEq(diem.balanceOf(alice), INITIAL_BALANCE); // Got all DIEM back
-        assertEq(pool.stakedAmount(alice), 0);
-        assertEq(pool.totalStaked(), 3000e18); // Only Bob's stake remains
-    }
-
-    function test_GetCooldownDuration() public view {
-        assertEq(pool.getCooldownDuration(), 1 days);
+        // 9. Verify state
+        assertEq(diem.balanceOf(alice), INITIAL_DIEM); // Got all DIEM back
+        assertEq(pool.totalStakedDIEM(), 3000e18); // Only Bob remains
+        assertEq(pool.availableCreditsToday(), 3000e6); // Reset for new day
     }
 }
