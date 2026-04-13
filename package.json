@@ -10,8 +10,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@rainbow-me/rainbowkit": "^2.2.10",
+    "@rhino.fi/sdk": "^1.12.4",
+    "@tanstack/react-query": "^5.99.0",
+    "qrcode.react": "^4.2.0",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^7.14.0",
+    "viem": "^2.47.14",
+    "wagmi": "^3.6.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
