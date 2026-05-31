@@ -15,7 +15,7 @@ import './PoolPage.css';
 
 type SupplyMode = 'liquid' | 'wrapped';
 type ActionMode = 'supply' | 'withdraw';
-type WithdrawMode = 'liquid' | 'wrapped';
+type WithdrawMode = 'liquid' | 'unwrap' | 'exit';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as Address;
 const DAY_SECONDS = 86_400n;
@@ -140,10 +140,11 @@ export function PoolPage() {
   const maxRedeem = read<bigint>(16, 0n);
   const csdiemPaused = read<boolean>(17, false);
   const pendingHarvest = read<bigint>(18, 0n);
-  const withdrawInputAmount = withdrawMode === 'wrapped' ? redeemAmount : withdrawAmount;
-  const parsedWithdrawInput = withdrawMode === 'wrapped' ? parsedRedeem : parsedWithdraw;
-  const withdrawBalance = withdrawMode === 'wrapped' ? maxRedeem : sdiemBalance;
-  const withdrawToken = withdrawMode === 'wrapped' ? 'csDIEM' : 'sDIEM';
+  const withdrawUsesCsdiem = withdrawMode !== 'liquid';
+  const withdrawInputAmount = withdrawUsesCsdiem ? redeemAmount : withdrawAmount;
+  const parsedWithdrawInput = withdrawUsesCsdiem ? parsedRedeem : parsedWithdraw;
+  const withdrawBalance = withdrawUsesCsdiem ? maxRedeem : sdiemBalance;
+  const withdrawToken = withdrawUsesCsdiem ? 'csDIEM' : 'sDIEM';
   const activeAllowance = mode === 'wrapped' ? csAllowance : sAllowance;
   const needsApproval = parsedDeposit > 0n && parsedDeposit > activeAllowance;
 
@@ -191,6 +192,8 @@ export function PoolPage() {
     ? 'Connect wallet'
     : !isBase
       ? 'Switch to Base'
+      : withdrawUsesCsdiem && csdiemPaused
+        ? 'Unwrap paused'
       : withdrawMode === 'liquid' && withdrawalAmount > 0n
         ? 'Withdrawal queued'
         : parsedWithdrawInput <= 0n
@@ -259,7 +262,7 @@ export function PoolPage() {
       switchChain({ chainId: base.id });
       return;
     }
-    if (withdrawMode === 'wrapped') {
+    if (withdrawUsesCsdiem) {
       handleRedeem();
       return;
     }
@@ -403,11 +406,11 @@ export function PoolPage() {
                 <div className="pool-panel-header pool-inline-header">
                   <div>
                     <h2 className="pool-panel-title">Withdraw DIEM</h2>
-                    <p className="pool-panel-copy">Choose the token you hold. sDIEM requests DIEM withdrawal; csDIEM unwraps to sDIEM first.</p>
+                    <p className="pool-panel-copy">Pick the exit path. sDIEM withdraws to DIEM; csDIEM can unwrap first or start a full exit.</p>
                   </div>
                 </div>
 
-                <div className="pool-token-tabs">
+                <div className="pool-token-tabs pool-token-tabs-three">
                   <button
                     className={withdrawMode === 'liquid' ? 'pool-token-tab-active' : ''}
                     onClick={() => setWithdrawMode('liquid')}
@@ -417,12 +420,20 @@ export function PoolPage() {
                     <span>Request DIEM withdrawal</span>
                   </button>
                   <button
-                    className={withdrawMode === 'wrapped' ? 'pool-token-tab-active' : ''}
-                    onClick={() => setWithdrawMode('wrapped')}
+                    className={withdrawMode === 'unwrap' ? 'pool-token-tab-active' : ''}
+                    onClick={() => setWithdrawMode('unwrap')}
                     type="button"
                   >
-                    <strong>csDIEM</strong>
+                    <strong>Unwrap csDIEM</strong>
                     <span>Unwrap to sDIEM first</span>
+                  </button>
+                  <button
+                    className={withdrawMode === 'exit' ? 'pool-token-tab-active' : ''}
+                    onClick={() => setWithdrawMode('exit')}
+                    type="button"
+                  >
+                    <strong>Exit csDIEM</strong>
+                    <span>Unwrap, then withdraw DIEM</span>
                   </button>
                 </div>
 
@@ -440,7 +451,7 @@ export function PoolPage() {
                           className="pool-input"
                           inputMode="decimal"
                           onChange={(event) =>
-                            withdrawMode === 'wrapped'
+                            withdrawUsesCsdiem
                               ? setRedeemAmount(event.target.value)
                               : setWithdrawAmount(event.target.value)
                           }
@@ -450,7 +461,7 @@ export function PoolPage() {
                         <button
                           className="pool-small-button"
                           onClick={() =>
-                            withdrawMode === 'wrapped'
+                            withdrawUsesCsdiem
                               ? setRedeemAmount(formatUnits(maxRedeem, 18))
                               : setWithdrawAmount(formatUnits(sdiemBalance, 18))
                           }
@@ -465,11 +476,17 @@ export function PoolPage() {
                     <div className="pool-preview pool-preview-quiet">
                       <div className="pool-preview-row">
                         <span>You receive</span>
-                        <strong>{withdrawMode === 'wrapped' ? `${formatToken(redeemPreview)} sDIEM` : 'DIEM after cooldown'}</strong>
+                        <strong>{withdrawUsesCsdiem ? `${formatToken(redeemPreview)} sDIEM` : 'DIEM after cooldown'}</strong>
                       </div>
                       <div className="pool-preview-row">
                         <span>Next step</span>
-                        <strong>{withdrawMode === 'wrapped' ? 'Then withdraw sDIEM' : 'Complete after 24h'}</strong>
+                        <strong>
+                          {withdrawMode === 'exit'
+                            ? 'Then request DIEM withdrawal'
+                            : withdrawMode === 'unwrap'
+                              ? 'Hold or withdraw sDIEM'
+                              : 'Complete after 24h'}
+                        </strong>
                       </div>
                       {withdrawalAmount > 0n && (
                         <div className="pool-preview-row">
@@ -491,7 +508,11 @@ export function PoolPage() {
                       {!isBase && isConnected
                         ? 'Switch to Base'
                         : withdrawDisableReason ||
-                          (withdrawMode === 'wrapped' ? 'Unwrap to sDIEM' : 'Request withdrawal')}
+                          (withdrawMode === 'exit'
+                            ? 'Start exit: unwrap csDIEM'
+                            : withdrawMode === 'unwrap'
+                              ? 'Unwrap to sDIEM'
+                              : 'Request withdrawal')}
                     </button>
 
                     {withdrawalAmount > 0n && (
