@@ -13,7 +13,7 @@ import { CSDIEM_V2_ABI, ERC20_ABI, SDIEM_V2_ABI } from '../abis/DIEMPool';
 import { CONTRACTS } from '../config/contracts';
 import './PoolPage.css';
 
-type SupplyMode = 'liquid' | 'wrapped';
+type SupplyMode = 'liquid' | 'convert' | 'direct';
 type ActionMode = 'supply' | 'withdraw';
 type WithdrawMode = 'liquid' | 'unwrap' | 'exit';
 
@@ -86,7 +86,7 @@ export function PoolPage() {
   const diem = CONTRACTS.DIEM_TOKEN as Address;
   const sdiem = CONTRACTS.SDIEM_V2 as Address;
   const csdiem = CONTRACTS.CSDIEM_V2 as Address;
-  const spender = mode === 'wrapped' ? csdiem : sdiem;
+  const spender = mode === 'liquid' ? sdiem : csdiem;
   const parsedDeposit = parseDiemAmount(depositAmount);
   const parsedRedeem = parseDiemAmount(redeemAmount);
   const parsedWithdraw = parseDiemAmount(withdrawAmount);
@@ -113,6 +113,8 @@ export function PoolPage() {
       { address: csdiem, abi: CSDIEM_V2_ABI, functionName: 'maxRedeem', args: [account] },
       { address: csdiem, abi: CSDIEM_V2_ABI, functionName: 'paused' },
       { address: csdiem, abi: CSDIEM_V2_ABI, functionName: 'pendingHarvest' },
+      { address: sdiem, abi: ERC20_ABI, functionName: 'allowance', args: [account, csdiem] },
+      { address: csdiem, abi: CSDIEM_V2_ABI, functionName: 'previewDeposit', args: [parsedDeposit] },
     ],
     query: { refetchInterval: 20_000 },
   });
@@ -140,12 +142,17 @@ export function PoolPage() {
   const maxRedeem = read<bigint>(16, 0n);
   const csdiemPaused = read<boolean>(17, false);
   const pendingHarvest = read<bigint>(18, 0n);
+  const sdiemToCsAllowance = read<bigint>(19, 0n);
+  const convertPreview = read<bigint>(20, 0n);
   const withdrawUsesCsdiem = withdrawMode !== 'liquid';
   const withdrawInputAmount = withdrawUsesCsdiem ? redeemAmount : withdrawAmount;
   const parsedWithdrawInput = withdrawUsesCsdiem ? parsedRedeem : parsedWithdraw;
   const withdrawBalance = withdrawUsesCsdiem ? maxRedeem : sdiemBalance;
   const withdrawToken = withdrawUsesCsdiem ? 'csDIEM' : 'sDIEM';
-  const activeAllowance = mode === 'wrapped' ? csAllowance : sAllowance;
+  const depositToken = mode === 'convert' ? 'sDIEM' : 'DIEM';
+  const depositBalance = mode === 'convert' ? sdiemBalance : diemBalance;
+  const activeAllowance = mode === 'convert' ? sdiemToCsAllowance : mode === 'direct' ? csAllowance : sAllowance;
+  const approvalToken = mode === 'convert' ? sdiem : diem;
   const needsApproval = parsedDeposit > 0n && parsedDeposit > activeAllowance;
 
   const dailyReward = rewardRate * DAY_SECONDS;
@@ -176,17 +183,17 @@ export function PoolPage() {
   }, [receipt.isSuccess, reads]);
 
   const isBusy = isWriting || receipt.isLoading || isSwitching;
-  const modePaused = mode === 'wrapped' ? csdiemPaused : sdiemPaused;
+  const modePaused = mode === 'liquid' ? sdiemPaused : csdiemPaused;
   const disableReason = !isConnected
     ? 'Connect wallet'
     : !isBase
       ? 'Switch to Base'
       : modePaused
-        ? 'Deposits paused'
+        ? mode === 'liquid' ? 'Staking paused' : 'Conversion paused'
         : parsedDeposit <= 0n
           ? 'Enter amount'
-          : parsedDeposit > diemBalance
-            ? 'Insufficient DIEM'
+          : parsedDeposit > depositBalance
+            ? `Insufficient ${depositToken}`
             : '';
   const withdrawDisableReason = !isConnected
     ? 'Connect wallet'
@@ -210,18 +217,27 @@ export function PoolPage() {
     }
     if (needsApproval) {
       writeContract({
-        address: diem,
+        address: approvalToken,
         abi: ERC20_ABI,
         functionName: 'approve',
         args: [spender, parsedDeposit],
       });
       return;
     }
-    if (mode === 'wrapped') {
+    if (mode === 'direct') {
       writeContract({
         address: csdiem,
         abi: CSDIEM_V2_ABI,
         functionName: 'depositDIEM',
+        args: [parsedDeposit, account],
+      });
+      return;
+    }
+    if (mode === 'convert') {
+      writeContract({
+        address: csdiem,
+        abi: CSDIEM_V2_ABI,
+        functionName: 'deposit',
         args: [parsedDeposit, account],
       });
       return;
@@ -286,7 +302,7 @@ export function PoolPage() {
             <h1 className="pool-title">Supply DIEM</h1>
             <p className="pool-subtitle">
               Connect a wallet to supply, track rewards, and withdraw. sDIEM is the liquid receipt;
-              csDIEM is the wrapped auto-compounding position.
+              csDIEM is the compounding receipt token.
             </p>
           </div>
           <div className="pool-status-card">
@@ -320,11 +336,11 @@ export function PoolPage() {
                 <div className="pool-panel-header pool-inline-header">
                   <div>
                     <h2 className="pool-panel-title">Supply DIEM</h2>
-                    <p className="pool-panel-copy">Most users should receive sDIEM first. Wrap later if they want compounding.</p>
+                    <p className="pool-panel-copy">Stake for sDIEM, convert existing sDIEM to csDIEM, or enter csDIEM directly from DIEM.</p>
                   </div>
                 </div>
 
-                <div className="pool-token-tabs">
+                <div className="pool-token-tabs pool-token-tabs-three">
                   <button
                     className={mode === 'liquid' ? 'pool-token-tab-active' : ''}
                     onClick={() => setMode('liquid')}
@@ -334,12 +350,20 @@ export function PoolPage() {
                     <span>Liquid staking + claimable USDC</span>
                   </button>
                   <button
-                    className={mode === 'wrapped' ? 'pool-token-tab-active' : ''}
-                    onClick={() => setMode('wrapped')}
+                    className={mode === 'convert' ? 'pool-token-tab-active' : ''}
+                    onClick={() => setMode('convert')}
                     type="button"
                   >
-                    <strong>csDIEM</strong>
-                    <span>Wrapped sDIEM + auto-compounding</span>
+                    <strong>Convert sDIEM</strong>
+                    <span>Turn sDIEM into csDIEM</span>
+                  </button>
+                  <button
+                    className={mode === 'direct' ? 'pool-token-tab-active' : ''}
+                    onClick={() => setMode('direct')}
+                    type="button"
+                  >
+                    <strong>Enter csDIEM</strong>
+                    <span>Supply DIEM as csDIEM</span>
                   </button>
                 </div>
 
@@ -350,7 +374,7 @@ export function PoolPage() {
                     <div className="pool-input-row pool-input-row-large">
                       <div className="pool-input-meta">
                         <span>Supply amount</span>
-                        <span>Wallet: {formatToken(diemBalance)} DIEM</span>
+                        <span>Wallet: {formatToken(depositBalance)} {depositToken}</span>
                       </div>
                       <div className="pool-input-line">
                         <input
@@ -362,23 +386,29 @@ export function PoolPage() {
                         />
                         <button
                           className="pool-small-button"
-                          onClick={() => setDepositAmount(formatUnits(diemBalance, 18))}
+                          onClick={() => setDepositAmount(formatUnits(depositBalance, 18))}
                           type="button"
                         >
                           MAX
                         </button>
-                        <span className="pool-token">DIEM</span>
+                        <span className="pool-token">{depositToken}</span>
                       </div>
                     </div>
 
                     <div className="pool-preview pool-preview-quiet">
                       <div className="pool-preview-row">
                         <span>You receive</span>
-                        <strong>{mode === 'liquid' ? 'sDIEM' : 'csDIEM'}</strong>
+                        <strong>
+                          {mode === 'liquid'
+                            ? 'sDIEM'
+                            : mode === 'convert'
+                              ? `${formatToken(convertPreview)} csDIEM`
+                              : 'csDIEM'}
+                        </strong>
                       </div>
                       <div className="pool-preview-row">
                         <span>Rewards</span>
-                        <strong>{mode === 'liquid' ? 'Claim USDC manually' : 'Auto-compound into share price'}</strong>
+                        <strong>{mode === 'liquid' ? 'Claim USDC manually' : 'Compounds into csDIEM share price'}</strong>
                       </div>
                       <div className="pool-preview-row">
                         <span>Current rate</span>
@@ -395,8 +425,13 @@ export function PoolPage() {
                       {!isBase && isConnected
                         ? 'Switch to Base'
                         : needsApproval
-                          ? 'Approve DIEM'
-                          : disableReason || (mode === 'liquid' ? 'Supply DIEM' : 'Supply and wrap')}
+                          ? `Approve ${depositToken}`
+                          : disableReason ||
+                            (mode === 'liquid'
+                              ? 'Supply DIEM'
+                              : mode === 'convert'
+                                ? 'Convert to csDIEM'
+                                : 'Supply as csDIEM')}
                     </button>
                   </>
                 )}
