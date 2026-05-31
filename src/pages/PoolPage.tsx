@@ -654,7 +654,7 @@ export function PoolPage() {
           </div>
           <div>
             <strong>Withdrawals</strong>
-            <span>sDIEM withdrawal requests complete after the 24h cooldown.</span>
+            <span>sDIEM withdraws to DIEM after the 24h cooldown. csDIEM unwraps to sDIEM first.</span>
           </div>
         </section>
       </div>
