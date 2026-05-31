@@ -200,7 +200,7 @@ export function PoolPage() {
     : !isBase
       ? 'Switch to Base'
       : withdrawUsesCsdiem && csdiemPaused
-        ? 'Unwrap paused'
+        ? 'Conversion paused'
       : withdrawMode === 'liquid' && withdrawalAmount > 0n
         ? 'Withdrawal queued'
         : parsedWithdrawInput <= 0n
@@ -301,8 +301,8 @@ export function PoolPage() {
             <div className="pool-kicker">DIEM Relay v2 vault</div>
             <h1 className="pool-title">Supply DIEM</h1>
             <p className="pool-subtitle">
-              Connect a wallet to supply, track rewards, and withdraw. sDIEM is the liquid receipt;
-              csDIEM is the compounding receipt token.
+              Connect a wallet to supply, track rewards, and withdraw. sDIEM is the liquid staking
+              receipt; csDIEM is the compounding vault receipt.
             </p>
           </div>
           <div className="pool-status-card">
@@ -336,7 +336,7 @@ export function PoolPage() {
                 <div className="pool-panel-header pool-inline-header">
                   <div>
                     <h2 className="pool-panel-title">Supply DIEM</h2>
-                    <p className="pool-panel-copy">Stake for sDIEM, convert existing sDIEM to csDIEM, or enter csDIEM directly from DIEM.</p>
+                    <p className="pool-panel-copy">Stake for sDIEM, convert existing sDIEM to csDIEM, or enter the compounding vault directly from DIEM.</p>
                   </div>
                 </div>
 
@@ -355,7 +355,7 @@ export function PoolPage() {
                     type="button"
                   >
                     <strong>Convert sDIEM</strong>
-                    <span>Turn sDIEM into csDIEM</span>
+                    <span>Move sDIEM into the compounding vault</span>
                   </button>
                   <button
                     className={mode === 'direct' ? 'pool-token-tab-active' : ''}
@@ -363,7 +363,7 @@ export function PoolPage() {
                     type="button"
                   >
                     <strong>Enter csDIEM</strong>
-                    <span>Supply DIEM as csDIEM</span>
+                    <span>Supply DIEM into the compounding vault</span>
                   </button>
                 </div>
 
@@ -441,7 +441,7 @@ export function PoolPage() {
                 <div className="pool-panel-header pool-inline-header">
                   <div>
                     <h2 className="pool-panel-title">Withdraw DIEM</h2>
-                    <p className="pool-panel-copy">Pick the exit path. sDIEM withdraws to DIEM; csDIEM can unwrap first or start a full exit.</p>
+                    <p className="pool-panel-copy">Pick the exit path. sDIEM queues a DIEM withdrawal; csDIEM converts back to sDIEM first.</p>
                   </div>
                 </div>
 
@@ -459,8 +459,8 @@ export function PoolPage() {
                     onClick={() => setWithdrawMode('unwrap')}
                     type="button"
                   >
-                    <strong>Unwrap csDIEM</strong>
-                    <span>Unwrap to sDIEM first</span>
+                    <strong>Convert csDIEM</strong>
+                    <span>Move csDIEM back to sDIEM</span>
                   </button>
                   <button
                     className={withdrawMode === 'exit' ? 'pool-token-tab-active' : ''}
@@ -468,7 +468,7 @@ export function PoolPage() {
                     type="button"
                   >
                     <strong>Exit csDIEM</strong>
-                    <span>Unwrap, then withdraw DIEM</span>
+                    <span>Convert, then withdraw DIEM</span>
                   </button>
                 </div>
 
@@ -519,7 +519,7 @@ export function PoolPage() {
                           {withdrawMode === 'exit'
                             ? 'Then request DIEM withdrawal'
                             : withdrawMode === 'unwrap'
-                              ? 'Hold or withdraw sDIEM'
+                              ? 'Hold sDIEM or withdraw DIEM'
                               : 'Complete after 24h'}
                         </strong>
                       </div>
@@ -544,9 +544,9 @@ export function PoolPage() {
                         ? 'Switch to Base'
                         : withdrawDisableReason ||
                           (withdrawMode === 'exit'
-                            ? 'Start exit: unwrap csDIEM'
+                            ? 'Start exit: convert csDIEM'
                             : withdrawMode === 'unwrap'
-                              ? 'Unwrap to sDIEM'
+                              ? 'Convert to sDIEM'
                               : 'Request withdrawal')}
                     </button>
 
@@ -685,11 +685,11 @@ export function PoolPage() {
           </div>
           <div>
             <strong>csDIEM</strong>
-            <span>Wrapped sDIEM. Rewards compound into the exchange rate.</span>
+            <span>Compounding vault receipt. Rewards accrue through the csDIEM exchange rate.</span>
           </div>
           <div>
             <strong>Withdrawals</strong>
-            <span>sDIEM withdraws to DIEM after the 24h cooldown. csDIEM unwraps to sDIEM first.</span>
+            <span>sDIEM withdraws to DIEM after the 24h cooldown. csDIEM converts to sDIEM first.</span>
           </div>
         </section>
       </div>
