@@ -556,6 +556,24 @@ export function PoolPage() {
               </div>
             ) : (
               <>
+                {withdrawalAmount > 0n && (
+                  <div className="pool-pending-card">
+                    <div>
+                      <span>Pending withdrawal</span>
+                      <strong>{formatToken(withdrawalAmount)} DIEM</strong>
+                      <small>{canCompleteWithdraw ? 'Ready to complete' : `${formatDuration(withdrawalWait)} remaining`}</small>
+                    </div>
+                    <button
+                      className="pool-secondary-action"
+                      disabled={isBusy}
+                      onClick={canCompleteWithdraw ? handleCompleteWithdraw : handleCancelWithdraw}
+                      type="button"
+                    >
+                      {canCompleteWithdraw ? 'Complete' : 'Cancel'}
+                    </button>
+                  </div>
+                )}
+
                 <div className="pool-balance-grid">
                   <div>
                     <span>DIEM</span>

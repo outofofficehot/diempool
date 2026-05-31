@@ -4,7 +4,7 @@ import { brand } from '../brand';
 
 export function Header() {
   const location = useLocation();
-  const isSupplier = location.pathname === '/' || location.pathname === '/supply';
+  const isSupplier = location.pathname === '/' || location.pathname === '/supply' || location.pathname === '/pool';
   const isBuyer = location.pathname === '/buy';
 
   return (
@@ -15,8 +15,8 @@ export function Header() {
           <span style={styles.logoText}>DIEMpool</span>
         </Link>
         <nav style={styles.nav}>
-          <Link 
-            to="/supply" 
+          <Link
+            to="/pool"
             style={{
               ...styles.navLink,
               ...(isSupplier ? styles.navLinkActive : {}),
@@ -46,7 +46,7 @@ export function Header() {
 const styles: { [key: string]: React.CSSProperties } = {
   header: {
     display: 'flex',
-    justifyContent: 'flex-start',
+    justifyContent: 'space-between',
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: '12px',
@@ -96,6 +96,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: brand.colors.primary,
   },
   right: {
+    marginLeft: 'auto',
     minWidth: 0,
   },
 };

@@ -594,6 +594,41 @@
   padding: 18px;
 }
 
+.pool-pending-card {
+  align-items: center;
+  border-bottom: 1px solid #2a2a3a;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 18px;
+}
+
+.pool-pending-card span,
+.pool-pending-card strong,
+.pool-pending-card small {
+  display: block;
+}
+
+.pool-pending-card span {
+  color: #9b9bae;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pool-pending-card strong {
+  color: #fff;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 18px;
+  margin-top: 5px;
+}
+
+.pool-pending-card small {
+  color: #c8fff4;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
 .pool-balance-grid div {
   border: 1px solid #2a2a3a;
   background: #101018;
