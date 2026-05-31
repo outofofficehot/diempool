@@ -459,6 +459,12 @@
   opacity: 0.46;
 }
 
+.pool-secondary-action-full {
+  display: block;
+  margin: 12px 20px 20px;
+  width: calc(100% - 40px);
+}
+
 .pool-actions-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
