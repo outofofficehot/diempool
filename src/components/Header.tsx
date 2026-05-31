@@ -24,15 +24,16 @@ export function Header() {
           >
             Supply DIEM
           </Link>
-          <Link 
-            to="/buy" 
+          <a
+            href="https://cheaptokens.ai/buy"
+            rel="noopener noreferrer"
             style={{
               ...styles.navLink,
               ...(isBuyer ? styles.navLinkActive : {}),
             }}
           >
             Buy Inference
-          </Link>
+          </a>
         </nav>
       </div>
       <div style={styles.right}>

@@ -17,7 +17,6 @@ type EarnMode = 'compound' | 'usdc';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as Address;
 const DAY_SECONDS = 86_400n;
-const YEAR_SECONDS = 31_536_000n;
 
 function formatToken(value: bigint, decimals = 18, maxFraction = 4) {
   const numeric = Number(formatUnits(value, decimals));
@@ -133,8 +132,10 @@ export function PoolPage() {
   const needsApproval = parsedDeposit > 0n && parsedDeposit > activeAllowance;
 
   const dailyReward = rewardRate * DAY_SECONDS;
-  const annualReward = rewardRate * YEAR_SECONDS;
   const usdcPerDiemDay = totalStaked > 0n ? (dailyReward * parseUnits('1', 18)) / totalStaked : 0n;
+  const sharePriceLabel =
+    csTotalSupply > 0n ? `1 csDIEM = ${formatToken(csSharePrice)} sDIEM` : 'Vault opening';
+  const dailyRewardLabel = dailyReward > 0n ? `${formatUsd(dailyReward)}/day` : 'Not streaming';
   const withdrawalAmount = withdrawalRequest[0] ?? 0n;
   const withdrawalStart = withdrawalRequest[1] ?? 0n;
   const withdrawalReadyAt = withdrawalStart + DAY_SECONDS;
@@ -234,45 +235,29 @@ export function PoolPage() {
     <div className="pool-page">
       <div className="pool-shell">
         <section className="pool-hero">
-          <div>
+          <div className="pool-hero-copy">
             <div className="pool-kicker">DIEM Relay v2 vault</div>
-            <h1 className="pool-title">Earn from AI inference demand.</h1>
+            <h1 className="pool-title">Put DIEM to work.</h1>
             <p className="pool-subtitle">
-              Deposit DIEM into the v2 vault. Choose automatic compounding through csDIEM, or direct
-              USDC revenue through sDIEM.
+              Deposit into the v2 vault, then choose automatic compounding or direct USDC cash yield.
+              The default path is built for passive DIEM exposure.
             </p>
+            <div className="pool-hero-points">
+              <span>Base mainnet</span>
+              <span>24h withdrawal cooldown</span>
+              <span>v2 contracts</span>
+            </div>
           </div>
-          <div className="pool-status-pill">
-            Status: <strong>{connectedLabel}</strong>
-          </div>
-        </section>
 
-        <section className="pool-stats">
-          <div className="pool-stat">
-            <span>Total staked</span>
-            <strong>{formatToken(totalStaked)} DIEM</strong>
-          </div>
-          <div className="pool-stat">
-            <span>csDIEM assets</span>
-            <strong>{formatToken(csTotalAssets)} sDIEM</strong>
-          </div>
-          <div className="pool-stat">
-            <span>Reward stream</span>
-            <strong>{formatUsd(dailyReward)}/day</strong>
-          </div>
-          <div className="pool-stat">
-            <span>csDIEM price</span>
-            <strong>{formatToken(csSharePrice)} sDIEM</strong>
-          </div>
-        </section>
-
-        <section className="pool-grid">
-          <div className="pool-panel">
-            <div className="pool-panel-header">
-              <h2 className="pool-panel-title">Choose how to earn</h2>
-              <p className="pool-panel-copy">
-                Auto-compound is the default. USDC yield is for users who want direct cashflow.
-              </p>
+          <div className="pool-panel pool-primary-panel">
+            <div className="pool-panel-header pool-primary-header">
+              <div>
+                <h2 className="pool-panel-title">Deposit</h2>
+                <p className="pool-panel-copy">{connectedLabel}</p>
+              </div>
+              <span className={`pool-live-dot ${sdiemPaused || csdiemPaused ? 'pool-live-dot-paused' : ''}`}>
+                {sdiemPaused || csdiemPaused ? 'Paused' : 'Live'}
+              </span>
             </div>
 
             <div className="pool-tabs">
@@ -282,30 +267,30 @@ export function PoolPage() {
                 type="button"
               >
                 <div className="pool-tab-title">
-                  Auto-compound DIEM <span className="pool-badge">Recommended</span>
+                  Auto-compound <span className="pool-badge">Default</span>
                 </div>
-                <div className="pool-tab-copy">Deposit DIEM, receive csDIEM, let rewards compound.</div>
+                <div className="pool-tab-copy">Receive csDIEM and let rewards keep working.</div>
               </button>
               <button
                 className={`pool-tab ${mode === 'usdc' ? 'pool-tab-active' : ''}`}
                 onClick={() => setMode('usdc')}
                 type="button"
               >
-                <div className="pool-tab-title">Earn USDC yield</div>
-                <div className="pool-tab-copy">Stake DIEM as sDIEM and claim USDC revenue.</div>
+                <div className="pool-tab-title">Cash yield</div>
+                <div className="pool-tab-copy">Receive sDIEM and claim USDC manually.</div>
               </button>
             </div>
 
             <div className="pool-form">
               {!isConnected ? (
                 <div className="pool-connect">
-                  Connect a wallet from the top-right button to use the v2 vault.
+                  Connect a wallet to deposit DIEM, claim USDC, or manage withdrawals.
                 </div>
               ) : (
                 <>
                   <div className="pool-input-row">
                     <div className="pool-input-meta">
-                      <span>Amount</span>
+                      <span>Deposit amount</span>
                       <span>Wallet: {formatToken(diemBalance)} DIEM</span>
                     </div>
                     <div className="pool-input-line">
@@ -329,16 +314,16 @@ export function PoolPage() {
 
                   <div className="pool-preview">
                     <div className="pool-preview-row">
-                      <span>Route</span>
-                      <strong>{mode === 'compound' ? 'DIEM -> csDIEM' : 'DIEM -> sDIEM'}</strong>
+                      <span>You receive</span>
+                      <strong>{mode === 'compound' ? 'csDIEM vault shares' : 'sDIEM staking balance'}</strong>
                     </div>
                     <div className="pool-preview-row">
-                      <span>Approval target</span>
-                      <strong>{mode === 'compound' ? 'csDIEM v2' : 'sDIEM v2'}</strong>
+                      <span>Reward handling</span>
+                      <strong>{mode === 'compound' ? 'Auto-compounded' : 'Claimable USDC'}</strong>
                     </div>
                     <div className="pool-preview-row">
-                      <span>Current reward rate</span>
-                      <strong>{formatUsd(annualReward)}/year</strong>
+                      <span>Vault rate</span>
+                      <strong>{dailyRewardLabel}</strong>
                     </div>
                     <div className="pool-preview-row">
                       <span>Reward period</span>
@@ -360,12 +345,12 @@ export function PoolPage() {
                       ? 'Switch to Base'
                       : needsApproval
                         ? 'Approve DIEM'
-                        : disableReason || (mode === 'compound' ? 'Deposit into csDIEM' : 'Stake into sDIEM')}
+                        : disableReason || (mode === 'compound' ? 'Deposit and compound' : 'Deposit for USDC yield')}
                   </button>
                   <p className="pool-note">
                     {mode === 'compound'
-                      ? 'csDIEM compounds sDIEM rewards back into the vault. Redeeming returns sDIEM.'
-                      : 'sDIEM earns claimable USDC. Withdrawing DIEM uses the 24h Venice cooldown.'}
+                      ? 'csDIEM compounds rewards through the vault. Redeem to sDIEM before exiting to DIEM.'
+                      : 'sDIEM earns claimable USDC. Withdrawing DIEM uses the 24h cooldown.'}
                   </p>
                 </>
               )}
@@ -382,43 +367,93 @@ export function PoolPage() {
               {writeError && <div className="pool-tx">Wallet error: {writeError.message}</div>}
             </div>
           </div>
+        </section>
+
+        <section className="pool-stats">
+          <div className="pool-stat">
+            <span>Total staked</span>
+            <strong>{formatToken(totalStaked)} DIEM</strong>
+          </div>
+          <div className="pool-stat">
+            <span>Auto-compound vault</span>
+            <strong>{formatToken(csTotalAssets)} sDIEM</strong>
+          </div>
+          <div className="pool-stat">
+            <span>Current USDC rewards</span>
+            <strong>{dailyRewardLabel}</strong>
+          </div>
+          <div className="pool-stat">
+            <span>Share price</span>
+            <strong>{sharePriceLabel}</strong>
+          </div>
+        </section>
+
+        <section className="pool-grid">
+          <div className="pool-panel">
+            <div className="pool-panel-header">
+              <h2 className="pool-panel-title">Mechanics</h2>
+              <p className="pool-panel-copy">
+                The two vault paths share the same underlying DIEM Relay v2 contracts.
+              </p>
+            </div>
+            <div className="pool-risk-list pool-risk-list-compact">
+              <div className="pool-risk-item">
+                <strong>Auto-compound</strong>
+                <span>DIEM deposits mint csDIEM. Rewards are harvested back into vault exposure.</span>
+              </div>
+              <div className="pool-risk-item">
+                <strong>Cash yield</strong>
+                <span>DIEM deposits mint sDIEM. USDC rewards accrue for manual claiming.</span>
+              </div>
+              <div className="pool-risk-item">
+                <strong>Exit path</strong>
+                <span>csDIEM redeems to sDIEM. sDIEM withdrawal requests complete after 24h.</span>
+              </div>
+              <div className="pool-risk-item">
+                <strong>Contract state</strong>
+                <span>sDIEM {sdiemPaused ? 'paused' : 'live'}; csDIEM {csdiemPaused ? 'paused' : 'live'}.</span>
+              </div>
+            </div>
+          </div>
 
           <div className="pool-stack">
             <div className="pool-panel pool-position">
               <h3 className="pool-section-title">Your position</h3>
-              <div className="pool-position-list">
-                <div className="pool-position-row">
-                  <span>Wallet DIEM</span>
-                  <strong>{formatToken(diemBalance)} DIEM</strong>
+              {!isConnected ? (
+                <div className="pool-empty-state">
+                  Connect a wallet to see DIEM balance, csDIEM shares, claimable USDC, and withdrawal state.
                 </div>
-                <div className="pool-position-row">
-                  <span>csDIEM</span>
-                  <strong>{formatToken(csBalance)} csDIEM</strong>
+              ) : (
+                <div className="pool-position-list">
+                  <div className="pool-position-row">
+                    <span>Wallet DIEM</span>
+                    <strong>{formatToken(diemBalance)} DIEM</strong>
+                  </div>
+                  <div className="pool-position-row">
+                    <span>csDIEM</span>
+                    <strong>{formatToken(csBalance)} csDIEM</strong>
+                  </div>
+                  <div className="pool-position-row">
+                    <span>sDIEM</span>
+                    <strong>{formatToken(sdiemBalance)} sDIEM</strong>
+                  </div>
+                  <div className="pool-position-row">
+                    <span>Claimable USDC</span>
+                    <strong>{formatUsd(pendingUsdc)}</strong>
+                  </div>
+                  <div className="pool-position-row">
+                    <span>Pending harvest</span>
+                    <strong>{formatUsd(pendingHarvest)}</strong>
+                  </div>
                 </div>
-                <div className="pool-position-row">
-                  <span>csDIEM supply</span>
-                  <strong>{formatToken(csTotalSupply)} csDIEM</strong>
-                </div>
-                <div className="pool-position-row">
-                  <span>sDIEM</span>
-                  <strong>{formatToken(sdiemBalance)} sDIEM</strong>
-                </div>
-                <div className="pool-position-row">
-                  <span>Claimable USDC</span>
-                  <strong>{formatUsd(pendingUsdc)}</strong>
-                </div>
-                <div className="pool-position-row">
-                  <span>Pending harvest</span>
-                  <strong>{formatUsd(pendingHarvest)}</strong>
-                </div>
-              </div>
+              )}
 
               <div className="pool-manage">
                 <h3 className="pool-section-title">Manage</h3>
                 <div className="pool-actions-grid">
                   <button
                     className="pool-secondary-action"
-                    disabled={isBusy || pendingUsdc <= 0n}
+                    disabled={isBusy || pendingUsdc <= 0n || !isConnected}
                     onClick={handleClaim}
                     type="button"
                   >
@@ -427,7 +462,7 @@ export function PoolPage() {
                   {withdrawalAmount > 0n ? (
                     <button
                       className="pool-secondary-action"
-                      disabled={isBusy}
+                      disabled={isBusy || !isConnected}
                       onClick={canCompleteWithdraw ? handleCompleteWithdraw : handleCancelWithdraw}
                       type="button"
                     >
@@ -460,6 +495,7 @@ export function PoolPage() {
                 <div className="pool-actions-grid">
                   <button
                     className="pool-secondary-action"
+                    disabled={!isConnected}
                     onClick={() => setRedeemAmount(formatUnits(maxRedeem, 18))}
                     type="button"
                   >
@@ -467,7 +503,7 @@ export function PoolPage() {
                   </button>
                   <button
                     className="pool-secondary-action"
-                    disabled={isBusy || parsedRedeem <= 0n || parsedRedeem > maxRedeem}
+                    disabled={isBusy || !isConnected || parsedRedeem <= 0n || parsedRedeem > maxRedeem}
                     onClick={handleRedeem}
                     type="button"
                   >
@@ -489,6 +525,7 @@ export function PoolPage() {
                 <div className="pool-actions-grid">
                   <button
                     className="pool-secondary-action"
+                    disabled={!isConnected}
                     onClick={() => setWithdrawAmount(formatUnits(sdiemBalance, 18))}
                     type="button"
                   >
@@ -496,39 +533,12 @@ export function PoolPage() {
                   </button>
                   <button
                     className="pool-secondary-action"
-                    disabled={isBusy || parsedWithdraw <= 0n || parsedWithdraw > sdiemBalance || withdrawalAmount > 0n}
+                    disabled={isBusy || !isConnected || parsedWithdraw <= 0n || parsedWithdraw > sdiemBalance || withdrawalAmount > 0n}
                     onClick={handleRequestWithdraw}
                     type="button"
                   >
                     Request withdrawal
                   </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="pool-panel">
-              <div className="pool-panel-header">
-                <h3 className="pool-panel-title">Mechanics</h3>
-                <p className="pool-panel-copy">Plain-English rules for the v2 vault.</p>
-              </div>
-              <div className="pool-risk-list">
-                <div className="pool-risk-item">
-                  <strong>csDIEM is the default</strong>
-                  <span>It auto-compounds USDC rewards back into DIEM exposure through the v2 vault.</span>
-                </div>
-                <div className="pool-risk-item">
-                  <strong>sDIEM is direct income</strong>
-                  <span>It earns claimable USDC rewards without auto-reinvesting them.</span>
-                </div>
-                <div className="pool-risk-item">
-                  <strong>Withdrawals take 24h</strong>
-                  <span>DIEM unstaking follows Venice cooldown mechanics. Redemptions to sDIEM are synchronous.</span>
-                </div>
-                <div className="pool-risk-item">
-                  <strong>Paused state</strong>
-                  <span>
-                    sDIEM {sdiemPaused ? 'is paused' : 'is live'}; csDIEM {csdiemPaused ? 'is paused' : 'is live'}.
-                  </span>
                 </div>
               </div>
             </div>

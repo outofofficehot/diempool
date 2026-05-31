@@ -2,7 +2,6 @@
   min-height: calc(100vh - 72px);
   background:
     linear-gradient(180deg, rgba(247, 147, 26, 0.08), transparent 340px),
-    radial-gradient(circle at 78% 4%, rgba(0, 212, 170, 0.12), transparent 32rem),
     #0a0a0f;
   color: #f6f6f8;
   padding: 32px 24px 56px;
@@ -15,10 +14,14 @@
 
 .pool-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 0.95fr) minmax(380px, 0.72fr);
   gap: 24px;
-  align-items: end;
+  align-items: center;
   margin-bottom: 24px;
+}
+
+.pool-hero-copy {
+  padding: 28px 0;
 }
 
 .pool-kicker {
@@ -32,7 +35,7 @@
 
 .pool-title {
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 44px;
+  font-size: 52px;
   line-height: 1.02;
   letter-spacing: 0;
   margin: 0 0 12px;
@@ -45,18 +48,21 @@
   margin: 0;
 }
 
-.pool-status-pill {
-  border: 1px solid #2a2a3a;
-  background: rgba(18, 18, 26, 0.86);
-  border-radius: 8px;
-  padding: 10px 12px;
-  color: #b7b7c8;
-  font-size: 13px;
-  white-space: nowrap;
+.pool-hero-points {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
 }
 
-.pool-status-pill strong {
-  color: #00d4aa;
+.pool-hero-points span {
+  border: 1px solid #2a2a3a;
+  background: rgba(18, 18, 26, 0.72);
+  border-radius: 8px;
+  color: #d7d7df;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 9px;
 }
 
 .pool-stats {
@@ -87,13 +93,13 @@
   display: block;
   color: #fff;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 20px;
+  font-size: 18px;
   letter-spacing: 0;
 }
 
 .pool-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+  grid-template-columns: minmax(0, 0.95fr) minmax(360px, 0.8fr);
   gap: 18px;
   align-items: start;
 }
@@ -106,8 +112,20 @@
 }
 
 .pool-panel-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
   padding: 20px;
   border-bottom: 1px solid #2a2a3a;
+}
+
+.pool-primary-panel {
+  box-shadow: 0 22px 80px rgba(247, 147, 26, 0.12), 0 18px 60px rgba(0, 0, 0, 0.28);
+}
+
+.pool-primary-header {
+  align-items: center;
 }
 
 .pool-panel-title {
@@ -120,6 +138,22 @@
   color: #9b9bae;
   font-size: 14px;
   margin: 0;
+}
+
+.pool-live-dot {
+  border: 1px solid rgba(0, 212, 170, 0.36);
+  background: rgba(0, 212, 170, 0.13);
+  border-radius: 8px;
+  color: #00d4aa;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 6px 9px;
+}
+
+.pool-live-dot-paused {
+  border-color: rgba(255, 178, 77, 0.42);
+  background: rgba(255, 178, 77, 0.12);
+  color: #ffb24d;
 }
 
 .pool-tabs {
@@ -156,7 +190,7 @@
   background: rgba(0, 212, 170, 0.16);
   color: #00d4aa;
   border: 1px solid rgba(0, 212, 170, 0.36);
-  border-radius: 999px;
+  border-radius: 8px;
   padding: 2px 7px;
   font-size: 10px;
   font-weight: 800;
@@ -323,6 +357,15 @@
   gap: 10px;
 }
 
+.pool-empty-state {
+  border: 1px dashed #38384c;
+  border-radius: 8px;
+  color: #9b9bae;
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 14px;
+}
+
 .pool-manage {
   border-top: 1px solid #2a2a3a;
   margin-top: 16px;
@@ -345,6 +388,10 @@
   display: grid;
   gap: 10px;
   padding: 18px;
+}
+
+.pool-risk-list-compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .pool-risk-item {
@@ -397,7 +444,8 @@
 @media (max-width: 560px) {
   .pool-stats,
   .pool-tabs,
-  .pool-actions-grid {
+  .pool-actions-grid,
+  .pool-risk-list-compact {
     grid-template-columns: 1fr;
   }
 
