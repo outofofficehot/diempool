@@ -46,16 +46,21 @@ export function Header() {
 const styles: { [key: string]: React.CSSProperties } = {
   header: {
     display: 'flex',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: '12px',
     padding: '16px 24px',
     borderBottom: `1px solid ${brand.colors.border}`,
     background: brand.colors.backgroundAlt,
+    overflow: 'hidden',
   },
   left: {
     display: 'flex',
     alignItems: 'center',
-    gap: '32px',
+    flexWrap: 'wrap',
+    gap: '16px',
+    minWidth: 0,
   },
   logo: {
     display: 'flex',
@@ -78,7 +83,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     gap: '8px',
   },
   navLink: {
-    padding: '8px 16px',
+    padding: '8px 10px',
     borderRadius: '8px',
     textDecoration: 'none',
     fontSize: '14px',
@@ -90,5 +95,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     background: brand.colors.primaryMuted,
     color: brand.colors.primary,
   },
-  right: {},
+  right: {
+    minWidth: 0,
+  },
 };
