@@ -38,6 +38,14 @@ function formatUsd(value: bigint, maxFraction = 2) {
   });
 }
 
+function formatApy(usdcPerDiemDay: bigint) {
+  const annualPercent = Number(formatUnits(usdcPerDiemDay, 6)) * 365 * 100;
+  if (!Number.isFinite(annualPercent) || annualPercent <= 0) return 'APY pending';
+  return `${annualPercent.toLocaleString(undefined, {
+    maximumFractionDigits: annualPercent >= 100 ? 0 : 2,
+  })}%`;
+}
+
 function shortAddress(address: Address) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
@@ -141,6 +149,8 @@ export function PoolPage() {
 
   const dailyReward = rewardRate * DAY_SECONDS;
   const usdcPerDiemDay = totalStaked > 0n ? (dailyReward * parseUnits('1', 18)) / totalStaked : 0n;
+  const rewardStreamActive = dailyReward > 0n && totalStaked > 0n && secondsUntil(periodFinish) > 0n;
+  const currentApyLabel = rewardStreamActive ? formatApy(usdcPerDiemDay) : 'APY pending';
   const sharePriceLabel =
     csTotalSupply > 0n ? `1 csDIEM = ${formatToken(csSharePrice)} sDIEM` : 'Vault opening';
   const dailyRewardLabel = dailyReward > 0n ? `${formatUsd(dailyReward)}/day` : 'Not streaming';
@@ -277,8 +287,9 @@ export function PoolPage() {
             </p>
           </div>
           <div className="pool-status-card">
-            <span>{connectedLabel}</span>
-            <strong>{sdiemPaused || csdiemPaused ? 'Vault paused' : 'Vault live'}</strong>
+            <span>Current APY</span>
+            <strong>{currentApyLabel}</strong>
+            <small>{sdiemPaused || csdiemPaused ? 'Vault paused' : 'Vault live'}</small>
           </div>
         </section>
 

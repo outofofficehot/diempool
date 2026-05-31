@@ -69,7 +69,8 @@
 }
 
 .pool-status-card span,
-.pool-status-card strong {
+.pool-status-card strong,
+.pool-status-card small {
   display: block;
 }
 
@@ -81,7 +82,17 @@
 
 .pool-status-card strong {
   color: #00d4aa;
-  font-size: 15px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 26px;
+  letter-spacing: 0;
+}
+
+.pool-status-card small {
+  color: #d7d7df;
+  font-size: 12px;
+  font-weight: 800;
+  margin-top: 7px;
+  text-transform: uppercase;
 }
 
 .pool-subtitle {
