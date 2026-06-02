@@ -6,8 +6,8 @@ import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit';
 import { config } from './config/wagmi';
 import { brand } from './brand';
 import { Header } from './components/Header';
-import { SupplyPage } from './pages/SupplyPage';
 import { BuyPage } from './pages/BuyPage';
+import { PoolPage } from './pages/PoolPage';
 
 const queryClient = new QueryClient();
 
@@ -27,9 +27,10 @@ function App() {
               <Header />
               <main style={styles.main}>
                 <Routes>
-                  <Route path="/" element={<Navigate to="/supply" replace />} />
-                  <Route path="/supply" element={<SupplyPage />} />
+                  <Route path="/" element={<Navigate to="/pool" replace />} />
+                  <Route path="/supply" element={<Navigate to="/pool" replace />} />
                   <Route path="/buy" element={<BuyPage />} />
+                  <Route path="/pool" element={<PoolPage />} />
                 </Routes>
               </main>
             </div>

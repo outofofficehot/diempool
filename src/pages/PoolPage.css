@@ -1,0 +1,818 @@
+.pool-page {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-height: calc(100vh - 72px);
+  background:
+    linear-gradient(180deg, rgba(247, 147, 26, 0.08), transparent 340px),
+    #0a0a0f;
+  color: #f6f6f8;
+  overflow-x: hidden;
+  padding: 32px 24px 56px;
+}
+
+.pool-shell {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.pool-page * {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.pool-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(380px, 0.72fr);
+  gap: 24px;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.pool-hero-compact {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  margin-bottom: 18px;
+}
+
+.pool-hero-copy {
+  padding: 28px 0;
+}
+
+.pool-kicker {
+  color: #f7931a;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.pool-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 44px;
+  line-height: 1.02;
+  letter-spacing: 0;
+  margin: 0 0 12px;
+  max-width: 100%;
+  overflow-wrap: break-word;
+}
+
+.pool-status-card {
+  border: 1px solid #2a2a3a;
+  background: rgba(18, 18, 26, 0.92);
+  border-radius: 8px;
+  min-width: 220px;
+  padding: 14px;
+}
+
+.pool-status-card span,
+.pool-status-card strong,
+.pool-status-card small {
+  display: block;
+}
+
+.pool-status-card span {
+  color: #9b9bae;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.pool-status-card strong {
+  color: #00d4aa;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 26px;
+  letter-spacing: 0;
+}
+
+.pool-status-card small {
+  color: #d7d7df;
+  font-size: 12px;
+  font-weight: 800;
+  margin-top: 7px;
+  text-transform: uppercase;
+}
+
+.pool-subtitle {
+  color: #b7b7c8;
+  max-width: min(710px, calc(100vw - 32px));
+  font-size: 16px;
+  margin: 0;
+  overflow-wrap: break-word;
+}
+
+.pool-hero-points {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.pool-hero-points span {
+  border: 1px solid #2a2a3a;
+  background: rgba(18, 18, 26, 0.72);
+  border-radius: 8px;
+  color: #d7d7df;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 9px;
+}
+
+.pool-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.pool-stats-tight {
+  margin-bottom: 18px;
+}
+
+.pool-stat {
+  border: 1px solid #2a2a3a;
+  background: rgba(26, 26, 36, 0.82);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.pool-stat span {
+  display: block;
+  color: #777790;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.pool-stat strong {
+  display: block;
+  color: #fff;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 18px;
+  letter-spacing: 0;
+}
+
+.pool-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(360px, 0.8fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.pool-app-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 0.56fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.pool-panel {
+  border: 1px solid #2a2a3a;
+  background: rgba(18, 18, 26, 0.94);
+  border-radius: 8px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.28);
+}
+
+.pool-panel-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 20px;
+  border-bottom: 1px solid #2a2a3a;
+}
+
+.pool-primary-panel {
+  box-shadow: 0 22px 80px rgba(247, 147, 26, 0.12), 0 18px 60px rgba(0, 0, 0, 0.28);
+}
+
+.pool-action-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid #2a2a3a;
+}
+
+.pool-action-tabs button {
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 8px;
+  color: #9b9bae;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 900;
+  padding: 12px;
+}
+
+.pool-action-tabs .pool-action-tab-active {
+  border-color: rgba(247, 147, 26, 0.65);
+  background: rgba(247, 147, 26, 0.12);
+  color: #fff;
+}
+
+.pool-form-main {
+  padding: 0;
+}
+
+.pool-inline-header {
+  border-bottom: 0;
+  padding-bottom: 8px;
+}
+
+.pool-token-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 0 20px 8px;
+}
+
+.pool-token-tabs-three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.pool-token-tabs button {
+  border: 1px solid #2a2a3a;
+  background: #101018;
+  border-radius: 8px;
+  color: #d7d7df;
+  cursor: pointer;
+  padding: 14px;
+  text-align: left;
+}
+
+.pool-token-tabs strong,
+.pool-token-tabs span {
+  display: block;
+}
+
+.pool-token-tabs strong {
+  color: #fff;
+  margin-bottom: 5px;
+}
+
+.pool-token-tabs span {
+  color: #8d8da0;
+  font-size: 13px;
+}
+
+.pool-token-tabs .pool-token-tab-active {
+  border-color: rgba(247, 147, 26, 0.7);
+  background: rgba(247, 147, 26, 0.12);
+}
+
+.pool-primary-header {
+  align-items: center;
+}
+
+.pool-panel-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 20px;
+  margin: 0 0 6px;
+}
+
+.pool-panel-copy {
+  color: #9b9bae;
+  font-size: 14px;
+  margin: 0;
+}
+
+.pool-live-dot {
+  border: 1px solid rgba(0, 212, 170, 0.36);
+  background: rgba(0, 212, 170, 0.13);
+  border-radius: 8px;
+  color: #00d4aa;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 6px 9px;
+}
+
+.pool-live-dot-paused {
+  border-color: rgba(255, 178, 77, 0.42);
+  background: rgba(255, 178, 77, 0.12);
+  color: #ffb24d;
+}
+
+.pool-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px;
+}
+
+.pool-tab {
+  text-align: left;
+  border: 1px solid #2a2a3a;
+  background: #12121a;
+  color: #d7d7df;
+  border-radius: 8px;
+  padding: 14px;
+  cursor: pointer;
+}
+
+.pool-tab-active {
+  border-color: rgba(247, 147, 26, 0.7);
+  background: rgba(247, 147, 26, 0.12);
+}
+
+.pool-tab-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.pool-badge {
+  background: rgba(0, 212, 170, 0.16);
+  color: #00d4aa;
+  border: 1px solid rgba(0, 212, 170, 0.36);
+  border-radius: 8px;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pool-tab-copy {
+  color: #8d8da0;
+  font-size: 13px;
+}
+
+.pool-form {
+  padding: 20px;
+}
+
+.pool-input-row {
+  border: 1px solid #303044;
+  background: #0f0f16;
+  border-radius: 8px;
+  padding: 14px;
+  margin: 12px 0;
+}
+
+.pool-input-row-large {
+  margin: 12px 20px;
+}
+
+.pool-input-meta {
+  display: flex;
+  justify-content: space-between;
+  color: #858599;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.pool-input-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.pool-input {
+  width: 100%;
+  background: transparent;
+  border: 0;
+  color: #fff;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 28px;
+  outline: none;
+  min-width: 0;
+}
+
+.pool-token {
+  color: #f7931a;
+  font-weight: 800;
+}
+
+.pool-small-button {
+  border: 1px solid #38384c;
+  background: #1a1a24;
+  color: #fff;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.pool-preview {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid #2a2a3a;
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.pool-preview-quiet {
+  margin-left: 20px;
+  margin-right: 20px;
+}
+
+.pool-preview-row,
+.pool-position-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: #a7a7b8;
+  font-size: 14px;
+}
+
+.pool-preview-row strong,
+.pool-position-row strong {
+  color: #fff;
+  font-family: 'JetBrains Mono', monospace;
+  text-align: right;
+}
+
+.pool-action {
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #f7931a, #ffb24d);
+  color: #0a0a0f;
+  padding: 14px 16px;
+  font-weight: 900;
+  font-size: 15px;
+  margin-top: 18px;
+  cursor: pointer;
+}
+
+.pool-form-main > .pool-action {
+  width: calc(100% - 40px);
+  margin-left: 20px;
+  margin-right: 20px;
+}
+
+.pool-action-inline {
+  margin-top: 0;
+}
+
+.pool-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
+}
+
+.pool-secondary-action {
+  border: 1px solid #38384c;
+  background: #171721;
+  color: #fff;
+  border-radius: 8px;
+  padding: 11px 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.pool-secondary-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
+}
+
+.pool-secondary-action-full {
+  display: block;
+  margin: 12px 20px 20px;
+  width: calc(100% - 40px);
+}
+
+.pool-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.pool-note {
+  color: #8d8da0;
+  font-size: 13px;
+  margin: 12px 0 0;
+}
+
+.pool-connect {
+  border: 1px dashed #38384c;
+  color: #b7b7c8;
+  border-radius: 8px;
+  padding: 18px;
+  text-align: center;
+  margin-top: 16px;
+  margin-left: 20px;
+  margin-right: 20px;
+}
+
+.pool-withdraw-status {
+  border: 1px solid rgba(0, 212, 170, 0.3);
+  background: rgba(0, 212, 170, 0.1);
+  border-radius: 8px;
+  margin: 0 20px 14px;
+  padding: 14px;
+}
+
+.pool-withdraw-status span,
+.pool-withdraw-status strong {
+  display: block;
+}
+
+.pool-withdraw-status span {
+  color: #9b9bae;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pool-withdraw-status strong {
+  color: #fff;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 20px;
+  margin-top: 6px;
+}
+
+.pool-withdraw-status p {
+  color: #c8fff4;
+  margin: 8px 0 0;
+}
+
+.pool-withdraw-stack {
+  display: grid;
+  gap: 14px;
+  padding: 0 20px 20px;
+}
+
+.pool-withdraw-block {
+  border: 1px solid #2a2a3a;
+  background: #101018;
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.pool-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.pool-position {
+  padding: 18px;
+}
+
+.pool-position-panel {
+  overflow: hidden;
+}
+
+.pool-section-title {
+  color: #fff;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 17px;
+  margin: 0 0 14px;
+}
+
+.pool-position-list {
+  display: grid;
+  gap: 10px;
+}
+
+.pool-empty-state {
+  border: 1px dashed #38384c;
+  border-radius: 8px;
+  color: #9b9bae;
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 14px;
+}
+
+.pool-empty-state-large {
+  margin: 18px;
+}
+
+.pool-balance-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 18px;
+}
+
+.pool-pending-card {
+  align-items: center;
+  border-bottom: 1px solid #2a2a3a;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 18px;
+}
+
+.pool-pending-card span,
+.pool-pending-card strong,
+.pool-pending-card small {
+  display: block;
+}
+
+.pool-pending-card span {
+  color: #9b9bae;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pool-pending-card strong {
+  color: #fff;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 18px;
+  margin-top: 5px;
+}
+
+.pool-pending-card small {
+  color: #c8fff4;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.pool-balance-grid div {
+  border: 1px solid #2a2a3a;
+  background: #101018;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.pool-balance-grid span,
+.pool-balance-grid strong {
+  display: block;
+}
+
+.pool-balance-grid span {
+  color: #777790;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pool-balance-grid strong {
+  color: #fff;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 17px;
+  margin-top: 6px;
+}
+
+.pool-rewards-card {
+  align-items: center;
+  border-top: 1px solid #2a2a3a;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px;
+}
+
+.pool-rewards-card span,
+.pool-rewards-card strong {
+  display: block;
+}
+
+.pool-rewards-card span {
+  color: #9b9bae;
+  font-size: 13px;
+}
+
+.pool-rewards-card strong {
+  color: #fff;
+  font-family: 'JetBrains Mono', monospace;
+  margin-top: 4px;
+}
+
+.pool-mechanics-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.pool-mechanics-strip div {
+  border: 1px solid #2a2a3a;
+  background: rgba(18, 18, 26, 0.82);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.pool-mechanics-strip strong,
+.pool-mechanics-strip span {
+  display: block;
+}
+
+.pool-mechanics-strip strong {
+  color: #fff;
+  margin-bottom: 5px;
+}
+
+.pool-mechanics-strip span {
+  color: #9b9bae;
+  font-size: 13px;
+}
+
+.pool-manage {
+  border-top: 1px solid #2a2a3a;
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.pool-mini-input {
+  width: 100%;
+  border: 1px solid #303044;
+  background: #0f0f16;
+  color: #fff;
+  border-radius: 8px;
+  padding: 11px 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  outline: none;
+}
+
+.pool-risk-list {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+}
+
+.pool-risk-list-compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.pool-risk-item {
+  border: 1px solid #2a2a3a;
+  background: #101018;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.pool-risk-item strong {
+  display: block;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.pool-risk-item span {
+  color: #9b9bae;
+  font-size: 13px;
+}
+
+.pool-tx {
+  border: 1px solid rgba(0, 212, 170, 0.28);
+  background: rgba(0, 212, 170, 0.1);
+  color: #c8fff4;
+  border-radius: 8px;
+  padding: 11px 12px;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.pool-tx-main {
+  margin: 0 20px 20px;
+}
+
+@media (max-width: 920px) {
+  .pool-page {
+    padding: 24px 16px 40px;
+  }
+
+  .pool-hero,
+  .pool-grid,
+  .pool-app-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pool-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pool-title {
+    font-size: 32px;
+    max-width: calc(100vw - 56px);
+  }
+
+  .pool-subtitle {
+    max-width: calc(100vw - 56px);
+  }
+}
+
+@media (max-width: 560px) {
+  .pool-panel,
+  .pool-stat,
+  .pool-status-card,
+  .pool-mechanics-strip div {
+    width: calc(100vw - 56px);
+  }
+
+  .pool-stats,
+  .pool-tabs,
+  .pool-actions-grid,
+  .pool-risk-list-compact,
+  .pool-token-tabs,
+  .pool-balance-grid,
+  .pool-mechanics-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .pool-input {
+    font-size: 24px;
+  }
+}
