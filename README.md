@@ -1,3 +1,11 @@
+# DIEM Pool
+
+## What this is
+
+DIEM Pool appears to be a Vite/React app shell for DIEM-related pool or staking UI work. The README was still the default Vite template, so treat this repo as unclear/unshipped until product scope is confirmed from code or Alex.
+
+Status: unclear/dormant. Do not assume it is production infrastructure without verifying contracts, deployment, and current owner intent.
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
