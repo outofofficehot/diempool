@@ -4,7 +4,7 @@ export const CONTRACTS_SECTION_URL = "/docs#contracts";
 
 export const CHEAPTOKENS_BUY_URL = "https://cheaptokens.ai/buy";
 export const VENICE_URL = "https://venice.ai";
-export const DIEMPOOL_URL = "https://diempool.com";
+export const DIEM_RELAY_URL = "https://diem-relay.com";
 
 export const BASESCAN_ADDRESSES = {
   diemToken: "https://basescan.org/address/0xf4d97f2da56e8c3098f3a8d538db630a2606a024",

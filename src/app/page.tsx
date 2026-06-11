@@ -17,7 +17,7 @@ import { CSDIEM_V2_ADDRESS, DIEM_TOKEN, REVENUE_SPLITTER_ADDRESS, SDIEM_V2_ADDRE
 import {
   CHEAPTOKENS_BUY_URL,
   CONTRACTS_SECTION_URL,
-  DIEMPOOL_URL,
+  DIEM_RELAY_URL,
   GITHUB_URL,
   VENICE_URL,
 } from '@/config/protocol-links';
@@ -860,9 +860,9 @@ export default function PoolPage() {
               <strong>Venice.ai</strong>
               <small>Private AI infrastructure</small>
             </a>
-            <a href={DIEMPOOL_URL} rel="noreferrer" target="_blank">
-              <strong>Diempool.com</strong>
-              <small>Supplier passbook</small>
+            <a href={DIEM_RELAY_URL} rel="noreferrer" target="_blank">
+              <strong>diem-relay.com</strong>
+              <small>Supply side partner</small>
             </a>
           </div>
         </section>
