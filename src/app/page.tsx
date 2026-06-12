@@ -13,7 +13,13 @@ import { base } from 'wagmi/chains';
 import { formatUnits, parseUnits, type Address } from 'viem';
 import { Header } from '@/components/Header';
 import { csDiemV2Abi, erc20Abi, revenueSplitterAbi, sDiemV2Abi } from '@/config/abis';
-import { CSDIEM_V2_ADDRESS, DIEM_TOKEN, REVENUE_SPLITTER_ADDRESS, SDIEM_V2_ADDRESS } from '@/config/contracts';
+import {
+  CSDIEM_V2_ADDRESS,
+  DIEM_TOKEN,
+  REVENUE_SPLITTER_ADDRESS,
+  SDIEM_V2_ADDRESS,
+  USDC_BASE,
+} from '@/config/contracts';
 import {
   CHEAPTOKENS_BUY_URL,
   CONTRACTS_SECTION_URL,
@@ -145,6 +151,8 @@ export default function PoolPage() {
       { address: sdiem, abi: sDiemV2Abi, functionName: 'veniceCooldownEnd' },
       { address: diem, abi: erc20Abi, functionName: 'balanceOf', args: [sdiem] },
       { address: diem, abi: erc20Abi, functionName: 'stakedInfos', args: [sdiem] },
+      { address: USDC_BASE, abi: erc20Abi, functionName: 'balanceOf', args: [revenueSplitter] },
+      { address: revenueSplitter, abi: revenueSplitterAbi, functionName: 'minAmount' },
     ],
     query: { refetchInterval: 20_000 },
   });
@@ -178,6 +186,8 @@ export default function PoolPage() {
   const veniceCooldownEnd = read<bigint>(22, 0n);
   const vaultLiquidDiem = read<bigint>(23, 0n);
   const vaultStakedInfo = read<readonly [bigint, bigint, bigint]>(24, [0n, 0n, 0n]);
+  const pendingSplitterUsdc = read<bigint>(25, 0n);
+  const splitterMinAmount = read<bigint>(26, 0n);
   const vaultVenicePendingDiem = vaultStakedInfo[2] ?? 0n;
   const circulatingSdiemSupply =
     sdiemTotalSupply > sdiemWrappedSupply ? sdiemTotalSupply - sdiemWrappedSupply : 0n;
@@ -208,6 +218,17 @@ export default function PoolPage() {
   const usdcPerDiemDay = totalStaked > 0n ? (dailyReward * parseUnits('1', 18)) / totalStaked : 0n;
   const rewardStreamActive = dailyReward > 0n && totalStaked > 0n && secondsUntil(periodFinish) > 0n;
   const currentApyLabel = rewardStreamActive ? formatApy(usdcPerDiemDay) : '0%';
+  const splitterHasPendingUsdc = pendingSplitterUsdc > 0n;
+  const splitterBelowMinimum = splitterMinAmount > 0n && pendingSplitterUsdc < splitterMinAmount;
+  const apyStatus = sdiemPaused || csdiemPaused
+    ? 'Vault paused'
+    : rewardStreamActive
+      ? 'Paid in USDC on Base'
+      : splitterHasPendingUsdc && splitterBelowMinimum
+        ? `${formatUsd(pendingSplitterUsdc)} pending / ${formatUsd(splitterMinAmount)} floor`
+        : splitterHasPendingUsdc
+          ? `${formatUsd(pendingSplitterUsdc)} ready for distribution`
+          : 'Waiting for USDC distribution';
   const withdrawalAmount = withdrawalRequest[0] ?? 0n;
   const withdrawalStart = withdrawalRequest[1] ?? 0n;
   const withdrawalReadyAt = withdrawalStart + DAY_SECONDS;
@@ -410,7 +431,7 @@ export default function PoolPage() {
           <div className="pool-status-card">
             <span>Net APY</span>
             <strong>{currentApyLabel}</strong>
-            <small>{sdiemPaused || csdiemPaused ? 'Vault paused' : 'Paid in USDC on Base'}</small>
+            <small>{apyStatus}</small>
           </div>
         </section>
 
