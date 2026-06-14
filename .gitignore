@@ -1,8 +1,7 @@
 node_modules/
-dist/
-.env
+.next/
+out/
 .env.local
-*.log
-.DS_Store
 .vercel
-.env*.local
+tsconfig.tsbuildinfo
+.claude/launch.json
